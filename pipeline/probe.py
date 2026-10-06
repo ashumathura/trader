@@ -1,33 +1,36 @@
-"""Temporary connectivity probe, run from GitHub Actions. Prints status codes and sizes only, never the key."""
-import os, urllib.request, urllib.parse, json, time, sys
+"""Temporary connectivity probe 2. Prints status codes and sizes only, never the key."""
+import os, urllib.request, urllib.parse, json, time
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 KEY = os.environ.get("AV_KEY", "").strip()
-print("AV_KEY set:", bool(KEY), "length:", len(KEY))
-def get(label, url, n=300, headers=None):
+def get(label, url, n=200, headers=None):
     h = {"User-Agent": UA}; h.update(headers or {})
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=20) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=25) as r:
             body = r.read().decode("utf-8", "replace")
-        print("OK  ", label, r.status, len(body), "|", body[:n].replace("\n", " ").replace(KEY, "***") if KEY else body[:n].replace("\n", " "))
+        print("OK  ", label, r.status, len(body), "|", body[:n].replace("\n", " ").replace(KEY, "***"))
         return body
     except Exception as e:
-        print("FAIL", label, e); return None
-y = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=5d&interval=1d"
-for s in ("ASML.AS", "NFLX", "1211.HK", "LLOY.L"): get("yahoo " + s, y % s, 80)
-get("yahoo query2 ASML.AS", y.replace("query1", "query2") % "ASML.AS", 80)
-for s in ("asml.nl", "nflx.us", "lloy.uk", "1211.hk", "9988.hk", "^spx", "^hsi", "^aex"): get("stooq " + s, "https://stooq.com/q/d/l/?s=%s&i=d" % urllib.parse.quote(s), 120)
-for s in ("ASML.AMS", "ADYEN.AMS", "SLIGR.AMS", "LLOY.LON", "9988.HKG", "1211.HKG", "NFLX", "GRAB", "SONO", "DIDIY"):
-    b = get("AV daily full " + s, "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&outputsize=full&symbol=%s&apikey=%s" % (s, KEY), 160)
+        print("FAIL", label, str(e).replace(KEY, "***")); return None
+av = "https://www.alphavantage.co/query?function=%s&symbol=%s&apikey=" + KEY
+def bars(label, fn, sym, extra=""):
+    b = get(label, (av % (fn, sym)) + extra, 150)
     if b:
         try:
-            ts = json.loads(b).get("Time Series (Daily)"); print("     bars:", len(ts) if ts else 0)
-        except Exception: pass
-    time.sleep(1.2)
-get("AV earnings calendar", "https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=6month&apikey=" + KEY, 200)
-for label, u in (("gnews", "https://news.google.com/rss/search?q=ASML+stock&hl=en-US&gl=US&ceid=US:en"),
-                 ("cnbc", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
-                 ("marketwatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
-                 ("investing", "https://www.investing.com/rss/news_25.rss"),
-                 ("yahoo news", "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NFLX&region=US&lang=en-US"),
-                 ("ecb rss", "https://www.ecb.europa.eu/rss/press.html"),
-                 ("fed rss", "https://www.federalreserve.gov/feeds/press_all.xml")): get(label, u, 100)
+            j = json.loads(b); k = [x for x in j if "Time Series" in x]
+            ts = j[k[0]] if k else {}; ds = sorted(ts)
+            print("     bars:", len(ts), ds[:1], ds[-1:], list(ts[ds[-1]].items())[:5] if ds else "")
+        except Exception as e: print("     parse", e)
+    time.sleep(1.5)
+for s in ("ASML.AMS", "LLOY.LON", "9988.HKG", "NFLX", "DIDIY"): bars("AV daily compact " + s, "TIME_SERIES_DAILY", s, "&outputsize=compact")
+for s in ("ASML.AMS", "9988.HKG"): bars("AV weekly " + s, "TIME_SERIES_WEEKLY", s)
+# keyless alternatives
+y = "https://query1.finance.yahoo.com/v8/finance/chart/NFLX?range=2y&interval=1d"
+get("jina->yahoo", "https://r.jina.ai/" + y, 200)
+get("allorigins->yahoo", "https://api.allorigins.win/raw?url=" + urllib.parse.quote(y), 200)
+get("yahoo cookie fc", "https://fc.yahoo.com", 60)
+get("google finance page", "https://www.google.com/finance/quote/NFLX:NASDAQ?hl=en", 100)
+get("nasdaq api hist", "https://api.nasdaq.com/api/quote/NFLX/historical?assetclass=stocks&fromdate=2026-09-01&limit=5&todate=2026-10-05", 200, {"Accept": "application/json"})
+get("stooq with ua+accept", "https://stooq.com/q/d/l/?s=nflx.us&i=d", 300, {"Accept": "text/csv"})
+get("hkex? sina hk", "https://hq.sinajs.cn/list=rt_hk09988", 100, {"Referer": "https://finance.sina.com.cn"})
+get("euronext live", "https://live.euronext.com/en/product/equities/NL0010273215-XAMS", 60)
+get("google news ASML", "https://news.google.com/rss/search?q=ASML+when:2d&hl=en-US&gl=US&ceid=US:en", 100)
