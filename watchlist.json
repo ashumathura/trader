@@ -3,6 +3,7 @@
   "tickers": [
     {
       "ticker": "AMS:ASML",
+      "afm": "ASML Holding",
       "yahoo": "ASML.AS",
       "av": "ASML.AMS",
       "name": "ASML Holding",
@@ -22,6 +23,7 @@
     },
     {
       "ticker": "AMS:ADYEN",
+      "afm": "Adyen",
       "yahoo": "ADYEN.AS",
       "av": "ADYEN.AMS",
       "name": "Adyen",
@@ -40,6 +42,7 @@
     },
     {
       "ticker": "AMS:SLIGR",
+      "afm": "Sligro",
       "yahoo": "SLIGR.AS",
       "av": "SLIGR.AMS",
       "name": "Sligro Food Group",
@@ -199,6 +202,7 @@
     },
     {
       "ticker": "AMS:MICC",
+      "afm": "Magnum Ice Cream",
       "yahoo": "MICC.AS",
       "av": "MICC.AMS",
       "name": "The Magnum Ice Cream Company",
@@ -217,6 +221,7 @@
     },
     {
       "ticker": "AMS:BFIT",
+      "afm": "Basic-Fit",
       "yahoo": "BFIT.AS",
       "av": "BFIT.AMS",
       "name": "Basic-Fit",

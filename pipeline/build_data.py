@@ -13,7 +13,7 @@ import datetime as dt
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lib, analysis, flow, context, analysts, yields
+import lib, analysis, flow, context, analysts, yields, shorts
 import macro as macro_mod
 from lib import (yahoo_chart, av_chart, parse_rss, themes_of, cached_get, estimate_next_dividend,
                  MARKET_FEEDS, CENTRAL_BANK_FEEDS, MARKET, STATUS)
@@ -78,12 +78,14 @@ def stock_news(t, move_pct):
 # ----------------------------------------------------------------------------- stocks
 def prefetch_flow():
     """Shared downloads for the money-flow section: FINRA daily files and the FCA short register."""
-    ctx = {"finra": [], "fca": None}
+    ctx = {"finra": [], "fca": None, "afm": None}
     if any(t.get("us") for t in TICKERS):
         ctx["finra"] = flow.finra_days(today())
         print("FINRA daily files:", len(ctx["finra"]))
     fca = next((t["fca"] for t in TICKERS if t.get("fca")), None)
     if fca: ctx["fca"] = flow.uk_shorts(fca)
+    if any(t.get("afm") for t in TICKERS):
+        ctx["afm"] = shorts.afm_rows(); print("AFM register rows:", len(ctx["afm"] or []))
     return ctx
 
 def build_stock(t, data, fctx):
@@ -105,6 +107,10 @@ def build_stock(t, data, fctx):
                 print("flow failed for", t["ticker"]); traceback.print_exc(); out["flow"] = None
         else:
             out["note"] = "Not enough price history for analysis."
+    try:
+        out["shorts"] = shorts.for_stock(t, out.get("flow") or {}, fctx, today())
+    except Exception:
+        print("shorts failed for", t["ticker"]); traceback.print_exc(); out["shorts"] = None
     try:
         out["analysts"] = analysts.analyse(t, today())
     except Exception:

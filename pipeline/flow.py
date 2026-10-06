@@ -296,8 +296,15 @@ def read_xlsx(blob):
         rows.append(r)
     return rows
 
+def _xl_date(v):
+    """Excel serial number or ISO-like text -> 'YYYY-MM-DD' (or None)."""
+    if v is None or v == "": return None
+    try: return (dt.date(1899, 12, 30) + dt.timedelta(days=int(float(v)))).isoformat() if float(v) > 20000 else None
+    except ValueError: return str(v).strip()[:10] or None
+
 def fca_shorts(rows, issuer_match):
-    """Sum the disclosed net short positions (>= 0.5%) in one issuer from the FCA register rows."""
+    """Disclosed net short positions in one issuer from the FCA register rows. The register keeps every historical
+    disclosure, so only each holder's latest position counts (a latest value of zero means the holder dropped below 0.5%)."""
     hdr = None
     for i, r in enumerate(rows[:30]):
         txt = {k: v.lower() for k, v in r.items()}
@@ -307,17 +314,20 @@ def fca_shorts(rows, issuer_match):
     i, h = hdr
     c_iss = next(k for k, v in h.items() if "issuer" in v); c_pos = next(k for k, v in h.items() if "net short" in v)
     c_date = next((k for k, v in h.items() if "date" in v), None); c_hold = next((k for k, v in h.items() if "holder" in v), None)
-    pos = []
+    latest = {}
     for r in rows[i + 1:]:
-        if issuer_match.lower() in (r.get(c_iss) or "").lower():
-            try: pos.append((float(r[c_pos]), r.get(c_hold), r.get(c_date)))
-            except Exception: continue
-    if not pos: return {"holders": 0, "total_pct": 0.0, "top": [], "date": None}
-    pos.sort(reverse=True)
+        if issuer_match.lower() not in (r.get(c_iss) or "").lower(): continue
+        try: pct = float(r[c_pos])
+        except Exception: continue
+        d = _xl_date(r.get(c_date)) or ""; holder = r.get(c_hold) or "?"
+        if holder not in latest or d >= latest[holder][2]: latest[holder] = (pct, holder, d)
+    pos = sorted((p for p in latest.values() if p[0] > 0), reverse=True)
+    if not pos: return {"holders": 0, "total_pct": 0.0, "top": [], "date": max((p[2] for p in latest.values()), default=None) or None}
     # values may be fractions (0.012) or percents (1.2); disclosure threshold is 0.5%, so anything below 0.5 as fraction means percent already
     scale = 100 if max(p[0] for p in pos) < 0.5 else 1
-    return {"holders": len(pos), "total_pct": sum(p[0] for p in pos) * scale, "top": [{"holder": p[1], "pct": p[0] * scale} for p in pos[:3]],
-            "date": next((p[2] for p in pos if p[2]), None)}
+    return {"holders": len(pos), "total_pct": sum(p[0] for p in pos) * scale,
+            "top": [{"holder": p[1], "pct": p[0] * scale, "date": p[2] or None} for p in pos[:4]],
+            "date": max((p[2] for p in pos if p[2]), default=None)}
 
 def uk_shorts(issuer_match):
     blob = lib.cached_bytes("https://www.fca.org.uk/publication/data/short-positions-daily-update.xlsx", 12 * 3600, "fca_shorts")
@@ -499,10 +509,6 @@ def build(t, bars, tech, ctx, today):
     if t.get("fca"):
         out["uk_short"] = ctx.get("fca")
         if not out["uk_short"]: out["gaps"].append("FCA short-position register could not be read.")
-    elif t["exchange"].startswith("Euronext Amsterdam"):
-        out["gaps"].append("Short positions: the Dutch AFM register has no machine-readable feed; see afm.nl (net short positions above 0.5% are public).")
-    elif t["ticker"].startswith("HKG:"):
-        out["gaps"].append("Short selling: HKEX publishes daily short turnover as web pages only; not included.")
     opt = us if (us and not t.get("otc")) else adr
     if opt:
         out["options"] = options_for(opt, today, bars["c"])

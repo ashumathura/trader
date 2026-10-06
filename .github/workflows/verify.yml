@@ -22,6 +22,7 @@ jobs:
           import json
           print("META", json.load(open("docs/data/meta.json")))
           for x in json.load(open("docs/data/stocks.json"))["stocks"]:
+              k = x.get("shorts"); print("SHORT %-12s %s" % (x["ticker"], {kk: k.get(kk) for kk in ("kind","asof","total_pct","holders","prev_pct","chg_pct","ratio","chg_pts")} if k else None), "|", k and k["text"])
               a = x.get("analysts")
               if not a: print("ANALYSTS none", x["ticker"]); continue
               c = a["consensus"]; r = a["rev90"]

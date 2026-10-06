@@ -91,6 +91,14 @@ class UkShorts(unittest.TestCase):
         r = flow.fca_shorts(flow.read_xlsx(blob), "Lloyds Banking Group")
         self.assertEqual(r["holders"], 2); self.assertAlmostEqual(r["total_pct"], 1.8)
 
+    def test_only_latest_position_per_holder_counts(self):
+        blob = self.make_xlsx([["Position Holder", "Name of Share Issuer", "ISIN", "Net Short Position (%)", "Position Date"],
+                               ["Fund A", "LLOYDS BANKING GROUP PLC", "G", 1.5, 46000], ["Fund A", "LLOYDS BANKING GROUP PLC", "G", 0.9, 46010],
+                               ["Fund B", "LLOYDS BANKING GROUP PLC", "G", 0.7, 46000], ["Fund B", "LLOYDS BANKING GROUP PLC", "G", 0, 46012]])
+        r = flow.fca_shorts(flow.read_xlsx(blob), "lloyds")
+        self.assertEqual(r["holders"], 1); self.assertAlmostEqual(r["total_pct"], 0.9)
+        self.assertRegex(r["date"], r"^\d{4}-\d\d-\d\d$")
+
     def test_fraction_values_are_scaled(self):
         blob = self.make_xlsx([["Position Holder", "Name of Share Issuer", "Net Short Position (%)"], ["A", "LLOYDS BANKING GROUP", 0.012]])
         self.assertAlmostEqual(flow.fca_shorts(flow.read_xlsx(blob), "lloyds")["total_pct"], 1.2)

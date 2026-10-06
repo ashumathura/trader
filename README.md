@@ -4,7 +4,7 @@ A GitHub Action rebuilds a public web page every 30 minutes on weekdays and publ
 
 **https://ashumathura.github.io/trader/**
 
-It covers a fixed list of ten stocks (see `watchlist.json`) with technical analysis, a hidden-Markov regime model, price levels, news, market trends and an event calendar. **It contains no personal data**: no holdings, quantities, purchase prices or links to private sheets.
+It covers a fixed list of twelve stocks (see `watchlist.json`) with technical analysis, a hidden-Markov regime model, price levels, news, market trends and an event calendar. **It contains no personal data**: no holdings, quantities, purchase prices or links to private sheets.
 
 ## What the page shows
 Per stock: technicals, regime model, money flow and options, price levels, catalysts and **analyst ratings, price targets and changes**, sector context, macro sensitivity and a risk table. Market trends: drivers box, macro preamble, indices, currencies, commodities (Brent, WTI, gold, copper, softs), crypto in EUR and USD, **government bond yields and spreads** (US, UK, euro area, Germany, France, Italy, Spain, Netherlands), a volatility panel, sector heat map and a "what moves your stocks" correlation matrix.
@@ -34,7 +34,8 @@ Not financial advice. Everything is rule-based and descriptive.
 | Analyst ratings and targets | stockanalysis.com forecast pages (S&P Global, TipRanks) | direct fetch; parsed defensively; a daily snapshot builds the mean-target history |
 | Options, expected moves | CBOE delayed chains | ADR options are a labelled proxy for ASML, Lloyds, Alibaba |
 | Off-exchange and short-sale volume | FINRA daily files | US-listed only |
-| Short interest, insiders | Nasdaq API | US only; UK short positions from the FCA register |
+| Short interest, insiders | Nasdaq API | US only |
+| Short positions (daily) | AFM register (Netherlands), FCA register (UK), FINRA short-sale volume (US) | holders at or above 0.5% for the registers; day-on-day change from the site's own daily snapshot; none for Hong Kong. FinAristo is not used: it blocks automated access |
 | Bond yields | US Treasury (nominal and real), Bank of England, ECB, worldgovernmentbonds.com via proxy | country yields for DE, FR, IT, ES, NL have no history; changes build from daily snapshots |
 
 Histories that this site builds itself (implied-volatility rank, analyst mean target, country bond yields) live in the Actions cache (`pipeline/.cache`), so they accumulate from the first successful run onwards.

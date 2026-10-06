@@ -157,15 +157,31 @@ function offBlock(s) {
     ["Short-sale volume ratio", p100(o.short_ratio), num(o.short_ratio_avg20) ? `20-day average ${p100(o.short_ratio_avg20)}: ${o.tone === "up" ? "less shorting than usual" : o.tone === "dn" ? "more shorting than usual" : "in line"}` : "", o.tone],
   ]) + `<div class="small mut">${o.notes.map(esc).join(" ")} FINRA publishes totals only, so true dark pool venues cannot be separated from internalisers, and short-sale volume is not short interest.</div>`;
 }
+function shortsSection(s) {
+  const k = s.shorts; if (!k) return "";
+  const head = `<h4>Short positions and short selling (daily)${k.source ? ` <span class="mut" style="text-transform:none">${esc(k.source)}${k.asof ? ", latest " + esc(String(k.asof).slice(0, 10)) : ""}</span>` : ""}</h4>`;
+  if (k.kind === "none") return head + `<div class="small mut">${esc(k.text)}</div>`;
+  let rows;
+  if (k.kind === "register") rows = [
+    ["Disclosed net short position", k.holders ? f(k.total_pct, 2) + "%" : "none above 0.5%", k.holders ? `${k.holders} holder(s)` : "No holder is above the disclosure line", k.total_pct >= 3 ? "dn" : null],
+    ["Change vs previous day", num(k.chg_pct) ? (k.chg_pct >= 0 ? "+" : "") + f(k.chg_pct, 2) + " pts" : "n/a", num(k.chg_pct) ? (k.chg_pct > 0 ? "Shorts building" : k.chg_pct < 0 ? "Shorts covering" : "Unchanged") + ` (previous reading ${esc(k.prev_date)}: ${f(k.prev_pct, 2)}%)` : "Appears once the site has recorded two days", num(k.chg_pct) && k.chg_pct ? (k.chg_pct > 0 ? "dn" : "up") : null],
+    ...k.top.map((h, i) => [i ? "" : "Largest holders", esc(h.holder), `${f(h.pct, 2)}%${h.date ? ", position date " + esc(String(h.date).slice(0, 10)) : ""}`]),
+  ];
+  else rows = [
+    num(k.ratio) ? ["Short-sale volume ratio (latest session)", p100(k.ratio), num(k.ratio_avg20) ? `20-day average ${p100(k.ratio_avg20)}` : "", k.tone] : null,
+    num(k.chg_pts) ? ["Change vs previous session", (k.chg_pts >= 0 ? "+" : "") + f(k.chg_pts, 1) + " pts", k.chg_pts > 3 ? "More shorting than the day before" : k.chg_pts < -3 ? "Less shorting than the day before" : "Little changed", k.chg_pts > 3 ? "dn" : k.chg_pts < -3 ? "up" : null] : null,
+    k.interest ? ["Short interest (latest settlement)", vol(k.interest.shares) + " sh", `${num(k.interest.pct_of_shares) ? "about " + f(k.interest.pct_of_shares, 2) + "% of shares, " : ""}${f(k.interest.days_to_cover, 1)} days to cover, ${num(k.interest.change_pct) ? (k.interest.change_pct >= 0 ? "+" : "") + f(k.interest.change_pct, 1) + "% vs prior settlement" : ""}`] : null,
+  ];
+  return head + kvt(rows) + `<div class="small mut">${esc(k.text)} ${esc(k.scope || "")}</div>`;
+}
 function shortBlock(s) {
-  const F = s.flow, sh = F.short, uk = F.uk_short; let out = "";
+  const F = s.flow, sh = F.short; let out = "";
   if (sh) out += `<h4>Short interest${sh.adr ? ` <span class="mut" style="text-transform:none">(US ADR ${esc(sh.adr)} only, not the local listing)</span>` : ""}</h4>` + kvt([
     ["Shares short", vol(sh.shares), `settled ${esc(sh.date)}`],
     ["Days to cover", f(sh.days_to_cover, 1), sh.days_to_cover >= 5 ? "High: crowded short" : sh.days_to_cover >= 3 ? "Moderate" : "Low", sh.days_to_cover >= 5 ? "dn" : null],
     ["Change vs previous settlement", pc(sh.change_pct, 1), sh.tone === "up" ? "Shorts are covering" : sh.tone === "dn" && sh.change_pct > 8 ? "Shorting is building" : ""],
     num(sh.pct_of_shares) ? ["Approx. % of shares outstanding", f(sh.pct_of_shares, 2) + "%", "Shares outstanding estimated from market cap / price (not the free float)"] : null,
   ]);
-  if (uk) out += `<h4>UK net short positions (FCA register)</h4>` + (uk.holders ? kvt([["Disclosed net short (sum of holders)", f(uk.total_pct, 2) + "%", `${uk.holders} holder(s) above the 0.5% threshold${uk.date ? ", latest " + esc(String(uk.date).slice(0, 10)) : ""}`, uk.total_pct >= 3 ? "dn" : null]]) : '<div class="small mut">No holder is currently above the 0.5% disclosure threshold.</div>');
   const ins = F.insiders;
   if (ins) out += `<h4>Insider activity (last ${ins.days} days, SEC filings)</h4>` + (ins.buys + ins.sells ? kvt([["Open-market buys / sells", `${ins.buys} / ${ins.sells}`, `bought ${usd(ins.buy_value)}, sold ${usd(ins.sell_value)}`, ins.tone]]) + `<div class="small mut">${ins.recent.map(r => `${esc(r.date)} ${esc(r.role)} ${esc(r.type.toLowerCase())} ${vol(r.shares)} sh`).join(" · ")}. Sales are often pre-planned (10b5-1) or tax related: weak signal.</div>` : '<div class="small mut">No open-market insider buys or sells in the period.</div>');
   return out;
@@ -190,8 +206,8 @@ function optionsBlock(s) {
 }
 function flowSection(s) {
   const F = s.flow;
-  if (!F) return `<div class="note">Money-flow data unavailable.</div>`;
-  return volumeTable(s) + offBlock(s) + shortBlock(s) + optionsBlock(s) +
+  if (!F) return shortsSection(s) || `<div class="note">Money-flow data unavailable.</div>`;
+  return volumeTable(s) + shortsSection(s) + offBlock(s) + shortBlock(s) + optionsBlock(s) +
     (F.gaps.length ? `<div class="small mut" style="margin-top:8px"><b>Not available for this stock:</b> ${F.gaps.map(esc).join(" ")}</div>` : "") +
     `<div class="verdict ${F.overall.tone}"><div>💰 <b>Money flow verdict</b> <span class="badge ${tcls(F.overall.tone)}">${esc(F.overall.label)}</span></div><div>${esc(F.text)}</div>
      <ul class="small">${F.verdict.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
@@ -462,7 +478,7 @@ function method() {
   $("methodBox").innerHTML = `<ul class="small">
   <li><b>Confluence score (0 to 10):</b> ten yes/no checks: price vs 50 and 200-day averages, 50 above 200, RSI 50-70, MACD above signal, ADX over 20 with buyers in control, Aroon positive, on-balance volume rising, money flow positive, and the regime model favouring bull. 7 or more is Bullish, 3 or fewer Bearish; 5-6 leans bullish, 4 leans bearish. If a check cannot be computed (short history) the score is scaled to the checks available.</li>
   <li><b>Regime model:</b> a three-state Gaussian hidden Markov model fitted by Baum-Welch on standardised daily log returns and 20-day realised volatility. States are labelled bear, sideways and bull by their fitted mean return. The probabilities shown are <i>filtered</i> (use data up to today only), never smoothed with future data. Stickiness is the chance the regime persists a day; expected duration is 1 / (1 - stickiness). Walk-forward: refit every 21 sessions on an expanding window, scaler fitted on training data only.</li>
-  <li><b>Money flow:</b> OBV, Chaikin money flow, Money Flow Index, accumulation/distribution, up/down-day volume, accumulation and distribution days, 20/50-day VWAP and a 6-month volume profile come from daily price and volume bars. Off-exchange and short-sale volume are FINRA's daily public files (US-listed only). Short interest and insider trades come from Nasdaq (US, twice a month for short interest), UK short positions from the FCA register. Options come from CBOE delayed chains; for ASML, Lloyds and Alibaba the US-listed ADR options are used as a proxy. Adyen, Sligro, BYD and DiDi have no listed options. Dark pool venue-level data (FINRA ATS) needs credentials and is not included, and the Dutch AFM and HKEX short registers have no usable feed.</li>
+  <li><b>Money flow:</b> OBV, Chaikin money flow, Money Flow Index, accumulation/distribution, up/down-day volume, accumulation and distribution days, 20/50-day VWAP and a 6-month volume profile come from daily price and volume bars. Off-exchange and short-sale volume are FINRA's daily public files (US-listed only). Short interest and insider trades come from Nasdaq (US, twice a month for short interest), Short positions per stock: the Dutch AFM register (Amsterdam listings) and the FCA register (UK) are refreshed each business day and list holders at or above 0.5%, with the day-on-day change taken from the site's own daily snapshot; for US stocks FINRA's daily short-sale volume ratio and its change versus the previous session. Options come from CBOE delayed chains; for ASML, Lloyds and Alibaba the US-listed ADR options are used as a proxy. Adyen, Sligro, BYD and DiDi have no listed options. Dark pool venue-level data (FINRA ATS) needs credentials and is not included. Hong Kong has no machine-readable daily short feed, so HK cards say so.</li>
   <li><b>Analyst data:</b> consensus rating, mean/median/low/high price targets, monthly rating counts and recent rating and target changes come from the public forecast pages on stockanalysis.com (S&amp;P Global consensus, TipRanks actions). Revisions count upgrades, downgrades, target raises and cuts in the last 30 and 90 days. The mean-target history is recorded by this site once a day, so that change appears after 28 days. Analyst targets lean optimistic and lag price moves; the Street sentiment tag combines the buy share, revisions and upside, and is not part of the confluence score.</li>
   <li><b>Rates:</b> yields, the spread table and the change versus yesterday's close. US yields and the real yield are the US Treasury's official daily curves, UK gilts are Bank of England par yields (a couple of days behind), and the euro-area AAA curve is the ECB's. Germany, France, Italy, Spain and the Netherlands 10-year yields are current values; their change versus yesterday comes from this site's own daily record. Spread changes are the change in one leg minus the other.</li>
   <li><b>What moves your stocks:</b> correlations of each stock's daily returns with oil, yields, the dollar, VIX and gold over 60 shared trading days. These describe recent behaviour only: they are noisy, change over time and do not prove causation.</li>
