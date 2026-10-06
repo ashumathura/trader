@@ -217,6 +217,8 @@ def preamble(quotes, heads, events):
     for s in ("CL=F", "GC=F"):
         if s in q: vol.append("%s %.2f (%+.2f%%)" % (q[s]["name"], q[s]["price"], q[s]["chg_pct"]))
     if vol: out.append({"label": "Volatility and commodities", "text": ", ".join(vol)})
+    cr = ["%s \u20ac%s (%+.2f%%)" % (q[sy]["name"].split(" ")[0], "{:,.0f}".format(q[sy]["price"]), q[sy]["chg_pct"]) for sy in ("BTC-EUR", "ETH-EUR") if sy in q]
+    if cr: out.append({"label": "Crypto (24/7, in EUR)", "text": ", ".join(cr)})
     risks = [h for h in heads if h["tone"] == "neg"][:2]
     if risks: out.append({"label": "Key risks in the news", "text": " | ".join(h["title"] for h in risks)})
     soon = [e for e in events if e["kind"] in ("macro", "earnings") and 0 <= e["days"] <= 14]
