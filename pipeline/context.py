@@ -21,7 +21,7 @@ def quote(sym, name=None, rng="1y", ttl=3600):
     b = d["bars"]; c = b["c"]
     ret = lambda n: (c[-1] / c[-1 - n] - 1) * 100 if len(c) > n else None
     _Q[sym] = {"symbol": sym, "name": name or sym, "price": c[-1], "chg_pct": (c[-1] / c[-2] - 1) * 100, "ret_1m": ret(21), "ret_3m": ret(63),
-               "_t": b["t"], "_c": c, "_bars": b}
+               "asof": dt.datetime.fromtimestamp(b["t"][-1], dt.timezone.utc).date().isoformat(), "_t": b["t"], "_c": c, "_bars": b}
     return _Q[sym]
 
 def strip(q):

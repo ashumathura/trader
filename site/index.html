@@ -29,7 +29,7 @@ details.stock .body{padding:0 16px 16px}.sum-name{font-weight:650;font-size:16px
 .idea{border-left:4px solid var(--up)}
 ul.clean{list-style:none;margin:0;padding:0}ul.clean li{padding:5px 0;border-bottom:1px solid var(--line)}ul.clean li:last-child{border:0}
 a{color:var(--acc)}
-.cm{display:inline-block;min-width:54px;text-align:center;border-radius:5px;padding:2px 6px}
+.pill-c{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:1px 9px;font-size:12px}.cm{display:inline-block;min-width:54px;text-align:center;border-radius:5px;padding:2px 6px}
 svg text{fill:var(--mut);font-size:11px}
 .note{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--mut)}
 .err{border-color:var(--dn);color:var(--dn)}
@@ -221,6 +221,13 @@ function catalystBlock(s) {
 }
 
 // ---------- 5. cross-asset and sector context
+function macroLine(s) {
+  const mc = s.macro; if (!mc) return "";
+  const names = window.__factors || {};
+  const chips = Object.entries(mc.corr).filter(([, v]) => num(v) && Math.abs(v) >= 0.25).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 5)
+    .map(([k, v]) => `<span class="pill-c ${v >= 0 ? "up" : "dn"}">${esc(names[k] || k)} ${v >= 0 ? "+" : ""}${f(v, 2)}</span>`).join(" ");
+  return `<h4>Macro sensitivity (60 sessions)</h4><div class="small">${esc(mc.text)}</div>${chips ? `<div style="margin-top:4px">${chips}</div>` : ""}`;
+}
 function contextBlock(s) {
   const c = s.context; if (!c) return "";
   const row = (label, q, extra) => q ? `<tr><td>${label}</td><td>${esc(q.name && q.name !== q.symbol ? q.name + " (" + q.symbol + ")" : q.symbol)}</td><td class="n">${f(q.price, q.price < 10 ? 4 : 2)}</td><td class="n">${pc(q.chg_pct)}</td><td class="n">${pc(q.ret_1m, 1)}</td><td class="small">${extra || ""}</td></tr>` : "";
@@ -230,7 +237,7 @@ function contextBlock(s) {
     ${c.peers.map(p => row("Peer", p, num(s.returns["1m"]) && num(p.ret_1m) ? `stock ${s.returns["1m"] >= p.ret_1m ? "ahead" : "behind"} by ${f(Math.abs(s.returns["1m"] - p.ret_1m), 1)} pts` : "")).join("")}
     ${row("Local index", c.index, c.index && num(c.index.rel_1m) ? `stock ${c.index.rel_1m >= 0 ? "ahead" : "behind"} by ${f(Math.abs(c.index.rel_1m), 1)} pts (1M)` : "")}
     ${row("FX to EUR", c.fx, c.fx ? "A rising rate lifts the euro value of this stock's local-currency price" : "")}</table></div>
-    ${c.text ? `<div class="small" style="margin-top:6px">${esc(c.text)}</div>` : ""}<div class="small mut">ETFs and peers are US-listed proxies chosen for sector exposure; they are not perfect matches.</div>`;
+    ${c.text ? `<div class="small" style="margin-top:6px">${esc(c.text)}</div>` : ""}<div class="small mut">ETFs and peers are US-listed proxies chosen for sector exposure; they are not perfect matches.</div>${macroLine(s)}`;
 }
 
 // ---------- 6. risk and 7. recommendation
@@ -285,7 +292,7 @@ function stockCard(s) {
   const reds = (s.risk || []).filter(r => r.level === "red").length, ambers = (s.risk || []).filter(r => r.level === "amber").length;
   return `<details class="stock" id="t-${esc(ticker(s))}">${head}<div class="body">
     ${s.note ? `<div class="note" style="margin-bottom:10px">${esc(s.note)}</div>` : ""}
-    <div class="bottom"><div><b>Bottom line.</b> ${esc(thesis(s))}</div>${s.flow ? `<div style="margin-top:4px">${esc(s.flow.text)}</div>` : ""}
+    <div class="bottom"><div><b>Bottom line.</b> ${esc(thesis(s))}</div>${s.flow ? `<div style="margin-top:4px">${esc(s.flow.text)}</div>` : ""}${s.analysts ? `<div style="margin-top:4px">Street: ${esc(s.analysts.consensus.rating)} from ${s.analysts.consensus.n} analysts, mean target ${num(s.analysts.consensus.upside_pct) ? (s.analysts.consensus.upside_pct >= 0 ? "+" : "") + f(s.analysts.consensus.upside_pct, 0) + "% from the price" : "n/a"}; ${esc(s.analysts.sentiment.label.toLowerCase())} revisions.</div>` : ""}
       <div class="small mut" style="margin-top:4px">Risk: ${reds ? `🔴 ${reds} high ` : ""}${ambers ? `🟡 ${ambers} medium ` : ""}${!reds && !ambers ? "🟢 low " : ""}· Horizon: ${esc(s.horizon || "n/a")}</div></div>
     ${sec(0, "Stock identity")}
     <div class="tiles"><div class="tile"><span class="mut small">Last close</span><b>${price(s, p.last)}${unit(s)}</b>${pc(p.chg_pct)} <span class="mut small">prev ${price(s, p.prev)}</span></div>
@@ -304,7 +311,7 @@ function stockCard(s) {
     <h4>Market regime (hidden Markov model)</h4>${regimeBlock(s)}
     ${sec(2, "Volume, money flow and options")}${flowSection(s)}
     ${sec(3, "Price prediction and range forecast")}${rangeSection(s)}
-    ${sec(4, "Catalyst matrix", "(last 7 days and scheduled)")}${catalystBlock(s)}
+    ${sec(4, "Catalyst matrix and analyst views", "(last 7 days and scheduled)")}${catalystBlock(s)}${analystBlock(s)}
     ${sec(5, "Cross-asset and sector context")}${contextBlock(s)}
     ${sec(6, "Risk assessment")}${riskBlock(s)}
     ${sec(7, "Impact insight and recommendation")}${recoBlock(s)}
@@ -336,35 +343,105 @@ function universeBlock(u) {
     <tr><td>Least correlated pairs</td><td class="n">${u.lowest_corr.map(x => `${esc(x.a)}↔${esc(x.b)} ${f(x.corr, 2)}`).join("<br>") || "n/a"}</td><td></td></tr>
     <tr><td>Macro override risk</td><td class="n">${dot[rk.level]} ${rk.level === "red" ? "High" : rk.level === "amber" ? "Medium" : "Low"}</td><td class="small mut">${esc(rk.detail)}</td></tr></table></div></div>`;
 }
-function marketSection(m) {
+const bp = x => num(x) ? (x >= 0 ? "+" : "") + f(x, 0) + " bp" : "n/a";
+const asofTag = a => { if (!a) return ""; const today = new Date().toISOString().slice(0, 10); return a === today ? "live" : "close " + new Date(a + "T00:00:00Z").toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}); };
+function tileGroup(m, group, title, opts = {}) {
+  const q = m.quotes.filter(x => x.group === group && num(x.price));
+  if (!q.length) return "";
+  return `<h4>${title}</h4><div class="tiles">${q.map(x => `<div class="tile"><span class="mut small">${esc(x.name)}</span><b>${f(x.price, x.price < 10 ? 4 : x.price > 5000 ? 0 : 2)}</b>${pc(x.chg_pct)} <span style="float:right">${spark(x.spark, (x.chg_pct ?? 0) >= 0)}</span>
+    <div class="small mut">${asofTag(x.asof)}${opts.levels && num(x.support) ? ` · 20d range ${f(x.support, x.support < 10 ? 3 : 0)}-${f(x.resistance, x.resistance < 10 ? 3 : 0)}` : ""}</div>${x.extreme ? `<div class="small warn">${esc(x.extreme[0].toUpperCase() + x.extreme.slice(1))}</div>` : ""}</div>`).join("")}</div>`;
+}
+function ratesCard(r) {
+  if (!r || !r.rows.length) return `<div class="note">Bond yield data could not be fetched on the last update.</div>`;
+  const row = x => `<tr><td><b>${esc(x.name)}</b></td><td class="n">${f(x.last, 2)}%</td><td class="n">${bp(x.chg_1d_bp)}</td><td class="n">${bp(x.chg_1m_bp)}</td><td class="n">${bp(x.chg_3m_bp)}</td>
+    <td class="n small">${num(x.lo_1y) ? f(x.lo_1y, 2) + " to " + f(x.hi_1y, 2) : x.history_days != null ? `<span class="mut">history ${x.history_days} d</span>` : "n/a"}</td><td class="small ${x.extreme ? "warn" : "mut"}">${x.extreme ? esc(x.extreme) : ""}</td><td class="small mut">${esc(x.source)}${x.asof ? ", " + esc(x.asof.slice(5)) : ""}</td></tr>`;
+  const sp = r.spreads.map(x => `<tr><td>${esc(x.label)}</td><td class="n"><b>${bp(x.bp)}</b></td><td class="small mut">${esc(x.note)}</td></tr>`).join("");
+  const inf = (r.inflation || []).map(x => `<tr><td>${esc(x.label)}</td><td class="n"><b>${f(x.value, 2)}%</b></td><td class="small mut">${num(x.chg_1m_bp) ? bp(x.chg_1m_bp) + " in 1 month" : ""}</td></tr>`).join("");
+  return `<div class="card tw"><h3>Government bond yields</h3><table><tr><th>Bond</th><th class="n">Yield</th><th class="n">1 day</th><th class="n">1 month</th><th class="n">3 months</th><th class="n">1y range</th><th>Context</th><th>Source</th></tr>${r.rows.map(row).join("")}</table>
+    <div class="grid" style="margin-top:12px"><div><h4>Spreads and curve</h4><table>${sp}${inf}</table></div>
+    <div class="small mut"><h4>How to read this</h4>Rising yields raise the discount rate on future earnings, which tends to weigh on long-duration growth stocks and lift bank margins. A widening France-Germany or Italy-Germany spread signals stress in euro sovereign debt. Country yields for Germany, France, Italy, Spain and the Netherlands have no downloadable history, so their changes appear after the site has recorded a few days. UK gilt data from the Bank of England lags by a couple of days.</div></div></div>`;
+}
+function volCard(v) {
+  if (!v || v.vix == null) return "";
+  const kv = [["VIX", v.vix], ["VIX 9-day", v.vix9d], ["VIX 3-month", v.vix3m], ["VVIX", v.vvix], ["SKEW", v.skew], ["MOVE (rates)", v.move], ["VXN (Nasdaq)", v.vxn], ["OVX (oil)", v.ovx]].filter(x => num(x[1]));
+  return `<div class="card"><h3>Volatility</h3><div class="tiles">${kv.map(x => `<div class="tile"><span class="mut small">${x[0]}</span><b>${f(x[1], 1)}</b></div>`).join("")}</div>
+    <div style="margin-top:8px"><b>Regime:</b> ${esc(v.regime || "n/a")} · <b>Term structure:</b> ${esc(v.term || "n/a")}</div>
+    <ul class="small clean">${(v.notes || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+    ${v.expected && v.expected.length ? `<h4>Expected S&amp;P 500 move from options</h4><table><tr><th>Expiry</th><th class="n">Days</th><th class="n">Move</th><th class="n">Points</th></tr>${v.expected.map(e => `<tr><td>${esc(e.exp)}</td><td class="n">${e.dte}</td><td class="n">±${f(e.move_pct, 2)}%</td><td class="n">${num(e.points) ? "±" + f(e.points, 0) : "n/a"}</td></tr>`).join("")}</table><div class="small mut">${esc(v.expected_source)}. About one standard deviation.</div>` : ""}</div>`;
+}
+function sectorCard(m) {
+  const q = m.quotes.filter(x => x.group === "sector" && num(x.price)).sort((a, b) => b.chg_pct - a.chg_pct);
+  if (!q.length) return "";
+  const mx = Math.max(...q.map(x => Math.abs(x.chg_pct)), 0.5);
+  return `<div class="card"><h3>US sectors <span class="mut small">(sector ETFs, day change; 1M in the last column)</span></h3><table>${q.map(x => `<tr><td style="width:34%">${esc(x.name)} <span class="mut small">${esc(x.symbol)}</span></td><td style="width:40%"><div style="display:flex;align-items:center"><div style="width:${Math.abs(x.chg_pct) / mx * 50}%;height:10px;background:var(--${x.chg_pct >= 0 ? "up" : "dn"});margin-left:${x.chg_pct >= 0 ? 50 : 50 - Math.abs(x.chg_pct) / mx * 50}%;border-radius:3px"></div></div></td><td class="n">${pc(x.chg_pct)}</td><td class="n">${pc(x.ret_1m, 1)}</td></tr>`).join("")}</table></div>`;
+}
+function macroCard(mac, stocks) {
+  if (!mac || !mac.matrix.length) return "";
+  const cell = c => !num(c) ? '<td class="n mut">n/a</td>' : `<td class="n"><span class="cm" style="background:color-mix(in srgb, ${c >= 0 ? "var(--up)" : "var(--dn)"} ${Math.min(80, Math.round(Math.abs(c) * 120))}%, transparent)">${c >= 0 ? "+" : ""}${f(c, 2)}</span></td>`;
+  const nm = Object.fromEntries(stocks.map(s => [s.ticker, s.name]));
+  return `<div class="card tw"><h3>What moves your stocks <span class="mut small">(correlation of daily returns over the last ${mac.window} sessions)</span></h3>
+    <table><tr><th>Stock</th>${mac.factors.map(x => `<th class="n" title="${esc(x.label)}">${esc(x.label)}</th>`).join("")}</tr>
+    ${mac.matrix.map(r => `<tr><td><b>${esc(r.ticker.split(":").pop())}</b> <span class="mut small">${esc(nm[r.ticker] || "")}</span></td>${mac.factors.map(x => cell(r.corr[x.id])).join("")}</tr>`).join("")}</table>
+    ${mac.summary.length ? `<ul class="clean small" style="margin-top:8px">${mac.summary.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : '<div class="small mut" style="margin-top:8px">No factor moves more than three of the stocks in the same direction at the moment.</div>'}
+    <div class="small mut">Green: tends to move with the factor; red: tends to move against it. With 60 observations, values between -0.25 and +0.25 are indistinguishable from noise, and a correlation is not a cause. Yields are daily changes in the yield level.</div></div>`;
+}
+function marketSection(m, stocks) {
   if (!m) { $("marketBox").innerHTML = '<div class="note err">Market data unavailable.</div>'; return; }
   const q = m.quotes.filter(x => num(x.price));
-  const tiles = q.map(x => `<div class="tile"><span class="mut small">${esc(x.name)}</span><b>${f(x.price, x.price < 10 ? 4 : 2)}</b>${pc(x.chg_pct)} <span style="float:right">${spark(x.spark, (x.chg_pct ?? 0) >= 0)}</span></div>`).join("");
-  const trend = q.filter(x => x.trend).map(x => `<tr><td>${esc(x.name)}</td><td class="n">${pc(x.ret_1m, 1)}</td><td class="n">${pc(x.ret_3m, 1)}</td><td class="n">${pc(x.ret_ytd, 1)}</td><td class="n">${num(x.rsi) ? f(x.rsi, 0) : "n/a"}</td><td class="${x.trend === "Uptrend" ? "up" : x.trend === "Downtrend" ? "dn" : "warn"}">${esc(x.trend)}</td></tr>`).join("");
+  const trend = q.filter(x => x.trend && !["vol", "sector"].includes(x.group)).map(x => `<tr><td>${esc(x.name)}</td><td class="n">${pc(x.ret_1m, 1)}</td><td class="n">${pc(x.ret_3m, 1)}</td><td class="n">${pc(x.ret_ytd, 1)}</td><td class="n">${num(x.rsi) ? f(x.rsi, 0) : "n/a"}</td><td class="n small">${num(x.support) ? f(x.support, x.support < 10 ? 3 : 0) + " / " + f(x.resistance, x.resistance < 10 ? 3 : 0) : ""}</td><td class="${x.trend === "Uptrend" ? "up" : x.trend === "Downtrend" ? "dn" : "warn"}">${esc(x.trend)}</td><td class="small warn">${x.extreme ? esc(x.extreme) : ""}</td></tr>`).join("");
   const b = m.breadth, tot = Math.max(b.n, 1), reg = b.regimes, fl = b.flow || {up: 0, mid: 0, dn: 0};
   const bb = `<div class="bar"><i style="width:${b.bullish / tot * 100}%;background:var(--up)"></i><i style="width:${b.neutral / tot * 100}%;background:var(--warn)"></i><i style="width:${b.bearish / tot * 100}%;background:var(--dn)"></i></div><div class="small mut" style="display:flex;justify-content:space-between"><span class="up">${b.bullish} bullish</span><span class="warn">${b.neutral} neutral</span><span class="dn">${b.bearish} bearish</span></div>`;
-  $("marketBox").innerHTML = `<div class="card"><h3>Global macro preamble</h3><table class="kv">${(m.preamble || []).map(p => `<tr><td style="white-space:nowrap"><b>${esc(p.label)}</b></td><td class="small">${esc(p.text)}</td></tr>`).join("")}</table></div>
-    ${q.length ? `<div class="tiles">${tiles}</div>` : '<div class="note err">Index quotes could not be fetched on the last update.</div>'}
+  $("marketBox").innerHTML = `${(m.drivers_box || []).length ? `<div class="card"><h3>Market drivers and catalysts</h3><table class="kv">${m.drivers_box.map(p => `<tr><td style="white-space:nowrap"><b>${esc(p.label)}</b></td><td class="small">${esc(p.text)}</td></tr>`).join("")}</table></div>` : ""}
+    <div class="card"><h3>Global macro preamble</h3><table class="kv">${(m.preamble || []).map(p => `<tr><td style="white-space:nowrap"><b>${esc(p.label)}</b></td><td class="small">${esc(p.text)}</td></tr>`).join("")}</table></div>
+    ${tileGroup(m, "equity", "Equity indices")}${tileGroup(m, "fx", "Currencies")}${tileGroup(m, "commodity", "Commodities (with 20-day range)", {levels: true})}${tileGroup(m, "crypto", "Digital assets")}
+    ${ratesCard(m.rates)}${volCard(m.vol)}${macroCard(m.macro, stocks)}${sectorCard(m)}
     <div class="grid" style="margin-top:12px"><div class="card"><h3>Read of the market</h3><ul class="clean small">${m.read.map(x => `<li>${esc(x)}</li>`).join("") || '<li class="mut">Not enough data.</li>'}</ul></div>
     <div class="card"><h3>Breadth across the ten stocks</h3>${bb}<div class="small mut" style="margin-top:8px">Regimes: ${reg.bull} bull, ${reg.sideways} sideways, ${reg.bear} bear. Money flow: ${fl.up} inflow, ${fl.mid} mixed, ${fl.dn} outflow. Above 50-day: ${b.above_50}/${b.n}${b.have_200 ? `, above 200-day: ${b.above_200}/${b.have_200}` : ""}. Average confluence ${num(b.avg_confluence) ? f(b.avg_confluence, 1) : "n/a"}/10.</div></div></div>
     ${universeBlock(m.universe)}
-    ${trend ? `<div class="card tw"><h3>Trend table</h3><table><tr><th>Market</th><th class="n">1M</th><th class="n">3M</th><th class="n">YTD</th><th class="n">RSI</th><th>Trend</th></tr>${trend}</table></div>` : ""}
+    ${trend ? `<div class="card tw"><h3>Trend table</h3><table><tr><th>Market</th><th class="n">1M</th><th class="n">3M</th><th class="n">YTD</th><th class="n">RSI</th><th class="n">20d low / high</th><th>Trend</th><th>Context</th></tr>${trend}</table></div>` : ""}
     <div class="grid"><div class="card"><h3>What is driving headlines</h3>${m.drivers.map(d => `<div style="margin-bottom:8px"><b>${esc(d.theme)}</b> <span class="mut small">(${d.count})</span><ul class="clean small">${d.headlines.map(h => `<li><a href="${url(h.link)}" target="_blank" rel="noopener noreferrer">${esc(h.title)}</a> <span class="mut">${esc(h.source)}</span></li>`).join("")}</ul></div>`).join("") || '<span class="mut">None</span>'}</div>
     <div class="card"><h3>Central banks</h3><ul class="clean small">${(m.central_banks || []).slice(0, 8).map(h => `<li><b>${esc(h.bank)}</b>: <a href="${url(h.link)}" target="_blank" rel="noopener noreferrer">${esc(h.title)}</a> <span class="mut">${esc((h.time || "").slice(0, 10))}</span></li>`).join("") || '<li class="mut">None</li>'}</ul>
     <h3 style="margin-top:14px">Latest market headlines</h3><ul class="clean small">${m.headlines.slice(0, 10).map(h => `<li>${{pos: "🟢", neg: "🔴", neu: "⚪"}[h.tone]} <a href="${url(h.link)}" target="_blank" rel="noopener noreferrer">${esc(h.title)}</a> <span class="mut">${esc(h.source)}</span></li>`).join("")}</ul></div></div>`;
+}
+// ---------- analysts (stock card, section 4)
+function analystBlock(s) {
+  const A = s.analysts;
+  if (!A) return `<h4>Analyst ratings and price targets</h4><div class="small mut">Analyst data could not be fetched for this stock on the last update.</div>`;
+  const c = A.consensus, last = A.counts && A.counts.length ? A.counts[A.counts.length - 1] : null, sym = c.symbol || "";
+  const price = x => num(x) ? sym + f(x, x < 10 ? 2 : x < 1000 ? 2 : 0) : "n/a";
+  const bar = last && last.total ? `<div class="bar" title="Strong Buy / Buy / Hold / Sell / Strong Sell">${[["strong_buy", "var(--up)"], ["buy", "color-mix(in srgb, var(--up) 55%, transparent)"], ["hold", "var(--warn)"], ["sell", "color-mix(in srgb, var(--dn) 55%, transparent)"], ["strong_sell", "var(--dn)"]].map(([k, col]) => `<i style="width:${last[k] / last.total * 100}%;background:${col}"></i>`).join("")}</div>
+    <div class="small mut" style="display:flex;justify-content:space-between"><span class="up">Strong Buy ${last.strong_buy} · Buy ${last.buy}</span><span class="warn">Hold ${last.hold}</span><span class="dn">Sell ${last.sell} · Strong Sell ${last.strong_sell}</span></div>` : "";
+  const t = A.trend, sn = A.snapshot, r30 = A.rev30, r90 = A.rev90;
+  const act = a => `<tr><td class="n">${esc(a.date.slice(5))}</td><td>${esc(a.firm)}<div class="small mut">${esc(a.analyst)}</div></td><td><span class="badge ${a.kind === "upgrade" || a.kind === "target_raise" ? "b-up" : a.kind === "downgrade" || a.kind === "target_cut" ? "b-dn" : "b-mid"}">${esc(a.action)}</span></td><td>${esc(a.rating)}</td>
+    <td class="n">${a.pt_text ? esc(a.pt_text.replace(/→/g, " → ")) : "n/a"}${num(a.target_change_pct) ? ` <span class="${a.target_change_pct >= 0 ? "up" : "dn"} small">${a.target_change_pct >= 0 ? "+" : ""}${f(a.target_change_pct, 1)}%</span>` : ""}</td><td class="n">${a.upside ? esc(a.upside) : ""}</td></tr>`;
+  return `<h4>Analyst ratings and price targets</h4>
+    <div class="grid"><div>${kvt([
+      ["Consensus", `<span class="badge ${/buy/i.test(c.rating) ? "b-up" : /sell/i.test(c.rating) ? "b-dn" : "b-mid"}">${esc(c.rating)}</span>`, `${c.n} analysts`],
+      ["Mean target", price(c.mean), num(c.upside_pct) ? `${c.upside_pct >= 0 ? "+" : ""}${f(c.upside_pct, 1)}% vs current price` : "", num(c.upside_pct) ? (c.upside_pct >= 10 ? "up" : c.upside_pct < 0 ? "dn" : "mid") : null],
+      ["Median / low / high", `${price(c.median)} / ${price(c.low)} / ${price(c.high)}`, `${c.low_upside_pct >= 0 ? "+" : ""}${f(c.low_upside_pct, 0)}% to ${c.high_upside_pct >= 0 ? "+" : ""}${f(c.high_upside_pct, 0)}%`],
+      t ? ["Buy share over the last year", `${f(t.buy_pct_from, 0)}% → ${f(t.buy_pct_to, 0)}%`, `${t.change_pts >= 0 ? "+" : ""}${f(t.change_pts, 0)} pts since ${esc(t.from.slice(0, 7))}`, t.change_pts >= 5 ? "up" : t.change_pts <= -5 ? "dn" : "mid"] : null,
+      sn && num(sn.mean_change_pct) ? ["Mean target vs " + esc(sn.since), `${sn.mean_change_pct >= 0 ? "+" : ""}${f(sn.mean_change_pct, 1)}%`, "from this site's own daily records", sn.mean_change_pct > 0 ? "up" : sn.mean_change_pct < 0 ? "dn" : "mid"] : ["Mean target history", "building", `${sn ? sn.days_recorded : 0} daily record(s); change shows after 28 days`],
+      ["Street sentiment", `<span class="badge ${tcls(A.sentiment.tone)}">${esc(A.sentiment.label)}</span>`, esc(A.sentiment.why.join(" "))],
+    ])}${bar}</div>
+    <div><div class="tw"><table><tr><th>Revisions</th><th class="n">Upgrades</th><th class="n">Downgrades</th><th class="n">Target raises</th><th class="n">Target cuts</th><th class="n">Initiations</th></tr>
+      ${[r30, r90].map(r => `<tr><td>Last ${r.days} days</td><td class="n up">${r.upgrades}</td><td class="n dn">${r.downgrades}</td><td class="n up">${r.target_raises}</td><td class="n dn">${r.target_cuts}</td><td class="n">${r.initiations}</td></tr>`).join("")}</table></div>
+      ${A.estimates && A.estimates.eps && Object.keys(A.estimates.eps).length ? `<div class="small" style="margin-top:8px"><b>Consensus estimates:</b> ${Object.entries(A.estimates.eps).slice(-2).map(([y, v]) => `EPS ${esc(y)} ${esc(v)}`).join(", ")}${A.estimates.revenue && Object.keys(A.estimates.revenue).length ? "; revenue " + Object.entries(A.estimates.revenue).slice(-2).map(([y, v]) => `${esc(y)} ${esc(v)}`).join(", ") : ""}</div>` : ""}</div></div>
+    ${A.actions.length ? `<div class="tw" style="margin-top:8px"><table><tr><th class="n">Date</th><th>Firm</th><th>Action</th><th>Rating</th><th class="n">Price target</th><th class="n">Upside</th></tr>${A.actions.slice(0, 10).map(act).join("")}</table></div>` : '<div class="small mut">No recent analyst actions listed.</div>'}
+    <div class="small mut">Source: <a href="${url(A.url)}" target="_blank" rel="noopener noreferrer">stockanalysis.com</a> (S&amp;P Global consensus, TipRanks actions). Targets are in the source's currency (${esc(sym || "local")}); upside is the source's own figure. Analyst targets lean optimistic and lag price: treat changes as context, not signals.</div>`;
 }
 function heat(stocks) {
   const ok = stocks.filter(s => s.status === "ok").sort((a, b) => b.confluence.score - a.confluence.score || (b.regime?.probs.bull ?? 0) - (a.regime?.probs.bull ?? 0));
   const bad = stocks.filter(s => s.status !== "ok");
   const shade = sc => `color-mix(in srgb, ${sc >= 7 ? "var(--up)" : sc <= 3 ? "var(--dn)" : "var(--warn)"} 14%, transparent)`;
-  $("heatBox").innerHTML = `<table><tr><th>#</th><th>Stock</th><th class="n">Last</th><th class="n">Day</th><th class="n">1M</th><th>Bias</th><th class="n">Score</th><th>Conf.</th><th>Regime</th><th>Flow</th><th>Options</th><th>Risk</th><th>Top catalyst</th></tr>
+  $("heatBox").innerHTML = `<table><tr><th>#</th><th>Stock</th><th class="n">Last</th><th class="n">Day</th><th class="n">1M</th><th>Bias</th><th class="n">Score</th><th>Conf.</th><th>Regime</th><th>Flow</th><th>Options</th><th>Street</th><th>Risk</th><th>Top catalyst</th></tr>
   ${ok.map((s, i) => { const o = s.flow && s.flow.options, reds = (s.risk || []).filter(r => r.level === "red").length; return `<tr style="background:${shade(s.confluence.score)}"><td>${i + 1}</td><td><a href="#t-${esc(ticker(s))}" data-open="${esc(ticker(s))}"><b>${esc(ticker(s))}</b></a> <span class="mut small">${esc(s.name)}</span></td>
   <td class="n">${price(s, s.price.last)}${unit(s)}</td><td class="n">${pc(s.price.chg_pct)}</td><td class="n">${pc(s.returns["1m"], 1)}</td><td><span class="badge ${biasCls(s.bias)}">${esc(s.bias)}</span></td><td class="n">${s.confluence.score}/10</td><td>${s.confidence}</td>
   <td>${s.regime ? `<span style="color:${regCol[s.regime.current]}">${regName[s.regime.current]}</span> <span class="mut small">${p100(s.regime.probs[s.regime.current])}</span>` : '<span class="mut">n/a</span>'}</td>
   <td>${s.flow ? `<span class="${s.flow.overall.tone === "up" ? "up" : s.flow.overall.tone === "dn" ? "dn" : "warn"}">${s.flow.overall.tone === "up" ? "Inflow" : s.flow.overall.tone === "dn" ? "Outflow" : "Mixed"}</span>` : '<span class="mut">n/a</span>'}</td>
   <td class="small">${o ? `<span class="${o.tone === "up" ? "up" : o.tone === "dn" ? "dn" : "warn"}">${esc(o.label)}</span>${num(o.pc_volume) ? ` <span class="mut">P/C ${f(o.pc_volume, 2)}</span>` : ""}` : '<span class="mut">none</span>'}</td>
+  <td class="small">${s.analysts ? `<span class="${s.analysts.sentiment.tone === "up" ? "up" : s.analysts.sentiment.tone === "dn" ? "dn" : "warn"}">${esc(s.analysts.consensus.rating)}</span>${num(s.analysts.consensus.upside_pct) ? ` <span class="mut">${s.analysts.consensus.upside_pct >= 0 ? "+" : ""}${f(s.analysts.consensus.upside_pct, 0)}%</span>` : ""}` : '<span class="mut">n/a</span>'}</td>
   <td>${reds ? "🔴" + reds : (s.risk || []).some(r => r.level === "amber") ? "🟡" : "🟢"}</td><td class="small">${s.catalyst ? esc(s.catalyst.text) : ""}</td></tr>`; }).join("")}
-  ${bad.map(s => `<tr><td>-</td><td><b>${esc(ticker(s))}</b> <span class="mut small">${esc(s.name)}</span></td><td colspan="11" class="warn small">no price data on the last update</td></tr>`).join("")}</table>`;
+  ${bad.map(s => `<tr><td>-</td><td><b>${esc(ticker(s))}</b> <span class="mut small">${esc(s.name)}</span></td><td colspan="12" class="warn small">no price data on the last update</td></tr>`).join("")}</table>`;
 }
 function calendar(c) {
   const kinds = ["all", "earnings", "macro", "dividend"], wins = [[45, "Next 45 days"], [120, "Next 120 days"]];
@@ -383,6 +460,9 @@ function method() {
   <li><b>Confluence score (0 to 10):</b> ten yes/no checks: price vs 50 and 200-day averages, 50 above 200, RSI 50-70, MACD above signal, ADX over 20 with buyers in control, Aroon positive, on-balance volume rising, money flow positive, and the regime model favouring bull. 7 or more is Bullish, 3 or fewer Bearish; 5-6 leans bullish, 4 leans bearish. If a check cannot be computed (short history) the score is scaled to the checks available.</li>
   <li><b>Regime model:</b> a three-state Gaussian hidden Markov model fitted by Baum-Welch on standardised daily log returns and 20-day realised volatility. States are labelled bear, sideways and bull by their fitted mean return. The probabilities shown are <i>filtered</i> (use data up to today only), never smoothed with future data. Stickiness is the chance the regime persists a day; expected duration is 1 / (1 - stickiness). Walk-forward: refit every 21 sessions on an expanding window, scaler fitted on training data only.</li>
   <li><b>Money flow:</b> OBV, Chaikin money flow, Money Flow Index, accumulation/distribution, up/down-day volume, accumulation and distribution days, 20/50-day VWAP and a 6-month volume profile come from daily price and volume bars. Off-exchange and short-sale volume are FINRA's daily public files (US-listed only). Short interest and insider trades come from Nasdaq (US, twice a month for short interest), UK short positions from the FCA register. Options come from CBOE delayed chains; for ASML, Lloyds and Alibaba the US-listed ADR options are used as a proxy. Adyen, Sligro, BYD and DiDi have no listed options. Dark pool venue-level data (FINRA ATS) needs credentials and is not included, and the Dutch AFM and HKEX short registers have no usable feed.</li>
+  <li><b>Analyst data:</b> consensus rating, mean/median/low/high price targets, monthly rating counts and recent rating and target changes come from the public forecast pages on stockanalysis.com (S&amp;P Global consensus, TipRanks actions). Revisions count upgrades, downgrades, target raises and cuts in the last 30 and 90 days. The mean-target history is recorded by this site once a day, so that change appears after 28 days. Analyst targets lean optimistic and lag price moves; the Street sentiment tag combines the buy share, revisions and upside, and is not part of the confluence score.</li>
+  <li><b>Rates:</b> US yields and the real yield are the US Treasury's official daily curves, UK gilts are Bank of England par yields (a couple of days behind), and the euro-area AAA curve is the ECB's. Germany, France, Italy, Spain and the Netherlands 10-year yields are current values only; their changes build up from this site's own daily records. "Highest or lowest close since" compares with the history available (about two years for yields, one year for other markets).</li>
+  <li><b>What moves your stocks:</b> correlations of each stock's daily returns with oil, yields, the dollar, VIX and gold over 60 shared trading days. These describe recent behaviour only: they are noisy, change over time and do not prove causation.</li>
   <li><b>IV rank</b> needs a history of the stock's own implied volatility, which this site records once per day from now on; it appears after 20 daily readings.</li>
   <li><b>Price levels and ranges:</b> mechanical, based on 14-day average true range, pivot points and options-implied volatility. They describe volatility, not an edge.</li>
   <li><b>News tone:</b> a keyword count on headline text (Google News, CNBC, MarketWatch, Investing.com). It is crude and can be wrong, for example on sarcasm or negation.</li>
@@ -407,7 +487,8 @@ async function boot() {
     else if (meta.tickers_ok < meta.tickers_total) msgs.push(`${meta.tickers_total - meta.tickers_ok} stock(s) have no price data right now.`);
     if (stale > 30) msgs.push("The data is more than a day old: the scheduled update may have stopped.");
     $("status").innerHTML = msgs.map(x => `<div class="note err" style="margin:10px 0">${esc(x)}</div>`).join("");
-    ideas(st.stocks); marketSection(m); heat(st.stocks); calendar(cal);
+    window.__factors = Object.fromEntries(((m.macro && m.macro.factors) || []).map(x => [x.id, x.label]));
+    ideas(st.stocks); marketSection(m, st.stocks); heat(st.stocks); calendar(cal);
     $("stockBox").innerHTML = st.stocks.map(stockCard).join("");
     openIds.forEach(id => { if ($(id)) $(id).open = true; });
     if (!wired) {

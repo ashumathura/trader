@@ -13,9 +13,10 @@ import datetime as dt
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lib, analysis, flow, context
+import lib, analysis, flow, context, analysts, yields
+import macro as macro_mod
 from lib import (yahoo_chart, av_chart, parse_rss, themes_of, cached_get, estimate_next_dividend,
-                 MARKET_FEEDS, CENTRAL_BANK_FEEDS, INDICES, STATUS)
+                 MARKET_FEEDS, CENTRAL_BANK_FEEDS, MARKET, STATUS)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "docs", "data")
@@ -104,6 +105,10 @@ def build_stock(t, data, fctx):
                 print("flow failed for", t["ticker"]); traceback.print_exc(); out["flow"] = None
         else:
             out["note"] = "Not enough price history for analysis."
+    try:
+        out["analysts"] = analysts.analyse(t, today())
+    except Exception:
+        print("analysts failed for", t["ticker"]); traceback.print_exc(); out["analysts"] = None
     move = out.get("price", {}).get("chg_pct")
     out["news"] = stock_news(t, move)
     return out
@@ -162,16 +167,21 @@ def calendar_notes(events, stocks):
     return events
 
 # ----------------------------------------------------------------------------- market
+QUOTE_TTL = {"equity": 900, "vol": 900, "rates": 900}   # everything else refreshes about every other build
+
 def index_quote(item):
-    sym, name = item
+    group, sym, name = item
     q = context.quote(sym, name)
-    if not q: return {"symbol": sym, "name": name, "price": None}
+    if not q: return {"group": group, "symbol": sym, "name": name, "price": None}
     c = q["_c"]; b = q["_bars"]
     tech = lib.compute_tech(b) if len(c) >= 60 else None
-    return {"symbol": sym, "name": name, "price": c[-1], "chg_pct": q["chg_pct"], "spark": c[-60:],
+    series = [(dt.datetime.fromtimestamp(t, dt.timezone.utc).date(), v) for t, v in zip(b["t"], c)]
+    return {"group": group, "symbol": sym, "name": name, "price": c[-1], "chg_pct": q["chg_pct"], "asof": q["asof"], "spark": c[-60:],
             "ret_1m": q["ret_1m"], "ret_3m": q["ret_3m"], "ret_ytd": tech and tech["ret_ytd"],
             "rsi": tech and tech["rsi"], "trend": tech and next((s["label"] for s in tech["signals"] if s["label"] in ("Uptrend", "Downtrend", "Mixed trend")), None),
-            "above_200": bool(tech and tech["sma200"] and c[-1] > tech["sma200"])}
+            "above_200": bool(tech and tech["sma200"] and c[-1] > tech["sma200"]),
+            "support": tech and tech["lo20"], "resistance": tech and tech["hi20"], "from_hi52_pct": tech and (c[-1] / tech["hi52"] - 1) * 100,
+            "extreme": yields.extreme(series) if len(series) > 80 else None}
 
 def feed_items(url, name, ttl=900, limit=12):
     txt = cached_get(url, ttl, "market_news")
@@ -197,26 +207,33 @@ def breadth(stocks):
             "above_200": sum(1 for s in ok if s["tech"]["sma200"] and s["price"]["last"] > s["tech"]["sma200"]),
             "have_200": sum(1 for s in ok if s["tech"]["sma200"])}
 
-def preamble(quotes, heads, events):
-    """Global macro preamble in the report's order: US, Asia, Europe, rates/dollar, volatility, key risks, events."""
+def preamble(quotes, heads, events, rates):
+    """Global macro preamble in the report's order: US, Asia, Europe, rates, FX, volatility, commodities, crypto, key risks, events."""
     q = {x["symbol"]: x for x in quotes if x.get("price") is not None}
     mv = lambda s: "%s %+.2f%%" % (q[s]["name"], q[s]["chg_pct"]) if s in q else None
-    row = lambda label, syms, extra="": {"label": label, "text": ", ".join(x for x in (mv(s) for s in syms) if x) + extra} if any(s in q for s in syms) else None
-    out = [row("US cash and futures", ["^GSPC", "^IXIC", "ES=F", "NQ=F"]),
-           row("Asia", ["^N225", "000001.SS", "^HSI"]),
-           row("Europe", ["^STOXX", "^STOXX50E", "^GDAXI", "^AEX", "^FTSE"])]
-    rates = []
-    if "^TNX" in q: rates.append("US 10-year yield %.2f%% (%+.1f%%)" % (q["^TNX"]["price"], q["^TNX"]["chg_pct"]))
-    if "DX-Y.NYB" in q: rates.append("dollar index %.2f (%+.2f%%)" % (q["DX-Y.NYB"]["price"], q["DX-Y.NYB"]["chg_pct"]))
-    if "EURUSD=X" in q: rates.append("EUR/USD %.4f (%+.2f%%)" % (q["EURUSD=X"]["price"], q["EURUSD=X"]["chg_pct"]))
-    if rates: out.append({"label": "Rates, dollar, FX", "text": ", ".join(rates)})
+    row = lambda label, syms: {"label": label, "text": ", ".join(x for x in (mv(s) for s in syms) if x)} if any(s in q for s in syms) else None
+    out = [row("US cash and futures", ["^GSPC", "^NDX", "^DJI", "^RUT", "ES=F", "NQ=F"]),
+           row("Asia", ["^N225", "000001.SS", "^HSI", "^KS11", "^AXJO"]),
+           row("Europe", ["^STOXX", "^STOXX50E", "^GDAXI", "^FCHI", "^AEX", "^FTSE"])]
+    ry = {r["id"]: r for r in (rates or {}).get("rows", [])}
+    bits = []
+    for k in ("US 2Y", "US 10Y", "US 30Y", "UK 10Y", "DE 10Y"):
+        r = ry.get(k)
+        if r: bits.append("%s %.2f%%%s" % (k, r["last"], " (%+.0f bp)" % r["chg_1d_bp"] if r.get("chg_1d_bp") is not None else ""))
+    sp = {x["label"]: x for x in (rates or {}).get("spreads", [])}
+    for lab, short in (("US 10Y minus 2Y (curve)", "2s10s"), ("France minus Germany 10Y", "OAT-Bund"), ("Italy minus Germany 10Y", "BTP-Bund")):
+        if lab in sp: bits.append("%s %+.0f bp" % (short, sp[lab]["bp"]))
+    if bits: out.append({"label": "Government bonds", "text": ", ".join(bits)})
+    fx = [mv(s) for s in ("DX-Y.NYB", "EURUSD=X", "USDJPY=X", "EURGBP=X", "EURCHF=X") if s in q]
+    if fx: out.append({"label": "Currencies", "text": ", ".join(fx)})
     vol = []
     if "^VIX" in q:
         v = q["^VIX"]["price"]
         vol.append("VIX %.1f (%+.1f%%), %s" % (v, q["^VIX"]["chg_pct"], "calm" if v < 16 else "normal" if v < 22 else "elevated: markets are pricing in stress" if v < 30 else "very high: risk-off"))
-    for s in ("CL=F", "GC=F"):
-        if s in q: vol.append("%s %.2f (%+.2f%%)" % (q[s]["name"], q[s]["price"], q[s]["chg_pct"]))
-    if vol: out.append({"label": "Volatility and commodities", "text": ", ".join(vol)})
+    if "^MOVE" in q: vol.append("MOVE (rates volatility) %.1f (%+.1f%%)" % (q["^MOVE"]["price"], q["^MOVE"]["chg_pct"]))
+    if vol: out.append({"label": "Volatility", "text": ", ".join(vol)})
+    com = ["%s %.2f (%+.2f%%)" % (q[s]["name"], q[s]["price"], q[s]["chg_pct"]) for s in ("BZ=F", "CL=F", "GC=F", "HG=F", "SB=F", "CC=F") if s in q]
+    if com: out.append({"label": "Commodities", "text": ", ".join(com)})
     cr = ["%s \u20ac%s (%+.2f%%)" % (q[sy]["name"].split(" ")[0], "{:,.0f}".format(q[sy]["price"]), q[sy]["chg_pct"]) for sy in ("BTC-EUR", "ETH-EUR") if sy in q]
     if cr: out.append({"label": "Crypto (24/7, in EUR)", "text": ", ".join(cr)})
     risks = [h for h in heads if h["tone"] == "neg"][:2]
@@ -244,9 +261,76 @@ def market_read(quotes, heads, br):
         f = br["flow"]; out.append("Money flow across them: %d net inflow, %d mixed, %d net outflow." % (f["up"], f["mid"], f["dn"]))
     return out
 
-def market(stocks, events):
+def vol_panel(quotes):
+    """VIX family, term structure, SKEW and MOVE with a plain regime label, plus the options-implied S&P 500 move."""
+    q = {x["symbol"]: x for x in quotes if x.get("price") is not None}
+    g = lambda s: q[s]["price"] if s in q else None
+    vix, v9, v3m = g("^VIX"), g("^VIX9D"), g("^VIX3M")
+    term = None
+    if vix and v3m:
+        if v9 and v9 > vix > v3m: term = "Backwardation (stress: near-term fear above longer-term)"
+        elif v9 and v9 < vix < v3m or (not v9 and vix < v3m): term = "Contango (normal: calm near term, more uncertainty further out)"
+        elif vix > v3m: term = "Inverted (near-term volatility above 3-month)"
+        else: term = "Flat / mixed"
+    spx = q.get("^GSPC") or {}
+    bull = bool(spx.get("above_200"))
+    regime = None
+    if vix is not None:
+        regime = ("Low-volatility bull market" if vix < 16 and bull else "Low volatility, weak trend" if vix < 16 else
+                  "Normal volatility, uptrend" if vix < 22 and bull else "Normal volatility, no clear uptrend" if vix < 22 else
+                  "Elevated stress" if vix < 30 else "High-volatility crisis regime")
+    notes = []
+    if g("^SKEW") is not None: notes.append("SKEW %.0f: %s (above about 140 means investors are paying up for crash protection)." % (g("^SKEW"), "elevated tail-risk hedging" if g("^SKEW") >= 140 else "normal"))
+    if g("^MOVE") is not None: notes.append("MOVE %.0f: rates volatility is %s (above about 110 signals bond-market stress)." % (g("^MOVE"), "high" if g("^MOVE") >= 110 else "moderate" if g("^MOVE") >= 85 else "low"))
+    em = flow.expected_moves("SPY", today())
+    out = {"vix": vix, "vix9d": v9, "vix3m": v3m, "vvix": g("^VVIX"), "skew": g("^SKEW"), "move": g("^MOVE"), "vxn": g("^VXN"), "ovx": g("^OVX"),
+           "term": term, "regime": regime, "notes": notes}
+    if em:
+        spot = spx.get("price")
+        out["expected"] = [{"exp": m["exp"], "dte": m["dte"], "move_pct": m["move_pct"], "points": spot * m["move_pct"] / 100 if spot else None} for m in em["moves"]]
+        out["expected_source"] = "SPY option straddles, applied to the S&P 500 level"
+    return out
+
+def drivers_box(quotes, rates, vol, macro_summary):
+    """'Market drivers and catalysts': one line per asset class, built from the numbers. Descriptive only."""
+    q = {x["symbol"]: x for x in quotes if x.get("price") is not None}
+    ry = {r["id"]: r for r in (rates or {}).get("rows", [])}
+    out = []
+    eq = [q[k] for k in ("^GSPC", "^IXIC", "^STOXX", "^N225", "^HSI") if k in q]
+    if eq:
+        up = sum(1 for x in eq if x["chg_pct"] >= 0)
+        hi = [x["name"] for x in eq if x.get("extreme", "") and "highest" in (x.get("extreme") or "") ]
+        out.append({"label": "Equities", "text": "%d of %d major indices rose%s." % (up, len(eq), "; at or near 12-month highs: " + ", ".join(hi) if hi else "")})
+    r10 = ry.get("US 10Y")
+    if r10:
+        t = "US 10-year yield %.2f%% (%s bp on the day)" % (r10["last"], "%+.0f" % r10["chg_1d_bp"] if r10.get("chg_1d_bp") is not None else "n/a")
+        if r10.get("extreme"): t += ", " + r10["extreme"]
+        sp = {x["label"]: x["bp"] for x in (rates or {}).get("spreads", [])}
+        if "France minus Germany 10Y" in sp: t += "; France-Germany spread %.0f bp" % sp["France minus Germany 10Y"]
+        out.append({"label": "Fixed income", "text": t + "."})
+    if vol and vol.get("vix") is not None:
+        out.append({"label": "Volatility", "text": "VIX %.1f%s%s." % (vol["vix"], ", " + vol["regime"].lower() if vol.get("regime") else "", "; term structure " + vol["term"].split(" (")[0].lower() if vol.get("term") else "")})
+    cm = [q[k] for k in ("BZ=F", "GC=F", "HG=F", "SB=F", "CC=F") if k in q]
+    if cm:
+        top = max(cm, key=lambda x: abs(x["chg_pct"]))
+        t = "%s %.2f (%+.2f%%)" % (q["BZ=F"]["name"], q["BZ=F"]["price"], q["BZ=F"]["chg_pct"]) if "BZ=F" in q else ""
+        t += "; biggest mover %s %+.2f%%" % (top["name"], top["chg_pct"])
+        g = q.get("GC=F")
+        if g and g.get("support"): t += "; gold support near %.0f, resistance near %.0f" % (g["support"], g["resistance"])
+        out.append({"label": "Commodities", "text": t + "."})
+    fx = [q[k] for k in ("DX-Y.NYB", "EURUSD=X", "USDJPY=X") if k in q]
+    if fx:
+        t = ", ".join("%s %+.2f%%" % (x["name"], x["chg_pct"]) for x in fx)
+        ex = [x["name"] + ": " + x["extreme"] for x in fx if x.get("extreme")]
+        out.append({"label": "Currencies", "text": t + ("; " + "; ".join(ex) if ex else "") + "."})
+    cr = [q[k] for k in ("BTC-EUR", "ETH-EUR") if k in q]
+    if cr: out.append({"label": "Digital assets", "text": ", ".join("%s %+.2f%%" % (x["name"], x["chg_pct"]) for x in cr) + "."})
+    for line in (macro_summary or [])[:2]: out.append({"label": "Link to your stocks", "text": line})
+    return out
+
+def market(stocks, events, rates):
     with ThreadPoolExecutor(4) as ex:
-        quotes = list(ex.map(index_quote, INDICES))
+        quotes = list(ex.map(index_quote, MARKET))
     heads = []
     for name, url in MARKET_FEEDS: heads += feed_items(url, name)
     heads = [h for h in dedupe(heads)]
@@ -261,13 +345,18 @@ def market(stocks, events):
     for name, url in CENTRAL_BANK_FEEDS:
         for i in feed_items(url, name, ttl=3600, limit=5): i["bank"] = name; cb.append(i)
     br = breadth(stocks)
-    return quotes, heads, {"quotes": quotes, "headlines": heads, "central_banks": cb, "breadth": br, "preamble": preamble(quotes, heads, events),
+    vol = vol_panel(quotes)
+    return quotes, heads, {"quotes": quotes, "headlines": heads, "central_banks": cb, "breadth": br, "preamble": preamble(quotes, heads, events, rates), "rates": rates, "vol": vol,
                            "drivers": [{"theme": t, "count": c, "headlines": sample.get(t, [])} for t, c in th[:6]], "read": market_read(quotes, heads, br)}
 
 # ----------------------------------------------------------------------------- per-stock extras that need events, quotes and flow
 def top_catalyst(s):
     ev = next((e for e in s.get("events", []) if e["kind"] == "earnings" and e["days"] <= 30), None)
     if ev: return {"kind": "earnings", "text": "Earnings %s (in %d d)" % (ev["date"][5:], ev["days"])}
+    an = s.get("analysts")
+    if an:
+        recent = [a for a in an["actions"] if a["kind"] in ("upgrade", "downgrade") and (today() - dt.date.fromisoformat(a["date"])).days <= 14]
+        if recent: a = recent[0]; return {"kind": "analyst", "text": "%s %s by %s (%s)" % (a["rating"], "upgrade" if a["kind"] == "upgrade" else "downgrade", a["firm"], a["date"][5:])}
     o = (s.get("flow") or {}).get("options")
     if o and o.get("unusual"): return {"kind": "options", "text": "Unusual options activity"}
     it = next((i for i in s["news"]["items"] if i["tone"] != "neu"), None) or (s["news"]["items"][0] if s["news"]["items"] else None)
@@ -310,9 +399,12 @@ def main():
         for k in ("etf", "index", "fx"):
             if t.get(k): syms.append(t[k])
         syms += t.get("peers", [])
-    syms += [s for s, _ in INDICES]
+    ttl = {}
+    for g, sym, nm in MARKET: ttl[sym] = QUOTE_TTL.get(g, 2400)
+    for sym in syms: ttl.setdefault(sym, 3600)
     with ThreadPoolExecutor(4) as ex:
-        list(ex.map(lambda s: context.quote(s), sorted(set(syms))))
+        list(ex.map(lambda sy: context.quote(sy, ttl=ttl[sy]), sorted(ttl)))
+    syms = list(ttl)
     print("context quotes: %d of %d in %.0fs" % (sum(1 for s in set(syms) if context._Q.get(s)), len(set(syms)), time.time() - t0))
     fctx = prefetch_flow()
     stocks = [build_stock(t, charts.get(t["ticker"]), fctx) for t in TICKERS]
@@ -325,11 +417,25 @@ def main():
     enrich(stocks, charts, events, macro)
     events = calendar_notes(events, stocks)
     for s in stocks: s["events"] = [e for e in events if e["ticker"] == s["ticker"] and e["days"] >= 0][:5]
-    quotes, heads, mk = market(stocks, events)
+    try:
+        rates, yraw = yields.build(today())
+    except Exception:
+        print("yields failed"); traceback.print_exc(); rates, yraw = {"rows": [], "spreads": [], "inflation": []}, {}
+    quotes, heads, mk = market(stocks, events, rates)
     vix = next((q["price"] for q in quotes if q["symbol"] == "^VIX" and q.get("price")), None)
     series = {s["ticker"]: (charts[s["ticker"]]["bars"]["t"], charts[s["ticker"]]["bars"]["c"]) for s in stocks if s["status"] == "ok"}
     spx = context._Q.get("^GSPC")
     mk["universe"] = context.universe(stocks, series, (spx["_t"], spx["_c"]) if spx else None, events, vix, macro, heads)
+    try:
+        mac = macro_mod.build(series, {s["ticker"]: s["name"] for s in stocks}, {k: v for k, v in context._Q.items() if v}, yraw)
+    except Exception:
+        print("macro failed"); traceback.print_exc(); mac = None
+    mk["macro"] = mac
+    if mac:
+        for s in stocks:
+            if s["ticker"] in mac["text"]:
+                s["macro"] = {"text": mac["text"][s["ticker"]], "corr": next(m["corr"] for m in mac["matrix"] if m["ticker"] == s["ticker"])}
+    mk["drivers_box"] = drivers_box(quotes, rates, mk.get("vol"), mac and mac["summary"])
     write("calendar.json", {"events": events, "today": today().isoformat()})
     write("stocks.json", clean({"updated": now_utc().isoformat(timespec="seconds"), "stocks": stocks}))
     write("market.json", clean(mk))

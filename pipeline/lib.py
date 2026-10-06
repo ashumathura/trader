@@ -16,7 +16,7 @@ def _path(url):
 
 _throttle_lock = threading.Lock()
 _last_call = {}
-MIN_GAP = {"r.jina.ai": 3.3}  # free tier allows about 20 requests per minute
+MIN_GAP = {"r.jina.ai": 3.3, "stockanalysis.com": 1.2}  # free tier allows about 20 requests per minute
 
 def _throttle(url):
     host = urllib.parse.urlparse(url).netloc
@@ -340,8 +340,22 @@ CENTRAL_BANK_FEEDS = [
     ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
     ("ECB", "https://www.ecb.europa.eu/rss/press.html"),
 ]
-INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("ES=F", "S&P 500 futures"), ("NQ=F", "Nasdaq futures"),
-           ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^STOXX", "STOXX 600"), ("^FTSE", "FTSE 100"), ("^GDAXI", "DAX"),
-           ("^N225", "Nikkei 225"), ("000001.SS", "Shanghai Composite"), ("^HSI", "Hang Seng"),
-           ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("DX-Y.NYB", "US dollar index"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold"),
-           ("BTC-EUR", "Bitcoin (EUR)"), ("ETH-EUR", "Ethereum (EUR)")]
+MARKET = [
+    ("equity", "^GSPC", "S&P 500"), ("equity", "^IXIC", "Nasdaq"), ("equity", "^NDX", "Nasdaq 100"), ("equity", "^DJI", "Dow Jones"), ("equity", "^RUT", "Russell 2000"),
+    ("equity", "ES=F", "S&P 500 futures"), ("equity", "NQ=F", "Nasdaq futures"),
+    ("equity", "^AEX", "AEX"), ("equity", "^STOXX50E", "Euro Stoxx 50"), ("equity", "^STOXX", "STOXX 600"), ("equity", "^GDAXI", "DAX"), ("equity", "^FCHI", "CAC 40"),
+    ("equity", "^FTSE", "FTSE 100"), ("equity", "^IBEX", "IBEX 35"),
+    ("equity", "^N225", "Nikkei 225"), ("equity", "000001.SS", "Shanghai Composite"), ("equity", "^HSI", "Hang Seng"), ("equity", "^KS11", "Kospi"), ("equity", "^AXJO", "ASX 200"),
+    ("vol", "^VIX", "VIX"), ("vol", "^VIX9D", "VIX 9-day"), ("vol", "^VIX3M", "VIX 3-month"), ("vol", "^VVIX", "VVIX"), ("vol", "^SKEW", "SKEW"),
+    ("vol", "^MOVE", "MOVE (rates volatility)"), ("vol", "^VXN", "VXN (Nasdaq volatility)"), ("vol", "^OVX", "OVX (oil volatility)"),
+    ("rates", "^TNX", "US 10Y yield (Yahoo)"),
+    ("fx", "DX-Y.NYB", "US dollar index"), ("fx", "EURUSD=X", "EUR/USD"), ("fx", "USDJPY=X", "USD/JPY"), ("fx", "GBPUSD=X", "GBP/USD"), ("fx", "EURGBP=X", "EUR/GBP"), ("fx", "EURCHF=X", "EUR/CHF"),
+    ("commodity", "CL=F", "Oil (WTI)"), ("commodity", "BZ=F", "Oil (Brent)"), ("commodity", "NG=F", "Natural gas"), ("commodity", "GC=F", "Gold"), ("commodity", "SI=F", "Silver"),
+    ("commodity", "HG=F", "Copper"), ("commodity", "SB=F", "Sugar"), ("commodity", "CC=F", "Cocoa"),
+    ("crypto", "BTC-EUR", "Bitcoin (EUR)"), ("crypto", "ETH-EUR", "Ethereum (EUR)"), ("crypto", "BTC-USD", "Bitcoin (USD)"), ("crypto", "ETH-USD", "Ethereum (USD)"),
+    ("crypto", "SOL-USD", "Solana (USD)"), ("crypto", "XRP-USD", "XRP (USD)"), ("crypto", "IBIT", "iShares Bitcoin Trust"), ("crypto", "COIN", "Coinbase"), ("crypto", "MSTR", "Strategy"),
+    ("sector", "XLK", "Technology"), ("sector", "XLF", "Financials"), ("sector", "XLE", "Energy"), ("sector", "XLV", "Health care"), ("sector", "XLY", "Consumer discretionary"),
+    ("sector", "XLP", "Consumer staples"), ("sector", "XLI", "Industrials"), ("sector", "XLU", "Utilities"), ("sector", "XLB", "Materials"), ("sector", "XLRE", "Real estate"),
+    ("sector", "XLC", "Communication services"),
+]
+INDICES = [(s, n) for _, s, n in MARKET]

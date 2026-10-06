@@ -17,7 +17,8 @@
         "LRCX",
         "KLAC"
       ],
-      "index": "^AEX"
+      "index": "^AEX",
+      "sa": "quote/ams/ASML"
     },
     {
       "ticker": "AMS:ADYEN",
@@ -34,7 +35,8 @@
         "FIS",
         "GPN"
       ],
-      "index": "^AEX"
+      "index": "^AEX",
+      "sa": "quote/ams/ADYEN"
     },
     {
       "ticker": "AMS:SLIGR",
@@ -51,7 +53,8 @@
         "AD.AS",
         "CA.PA"
       ],
-      "index": "^AEX"
+      "index": "^AEX",
+      "sa": "quote/ams/SLIGR"
     },
     {
       "ticker": "LON:LLOY",
@@ -71,7 +74,8 @@
         "HSBA.L"
       ],
       "index": "^FTSE",
-      "fx": "GBPEUR=X"
+      "fx": "GBPEUR=X",
+      "sa": "quote/lon/LLOY"
     },
     {
       "ticker": "HKG:9988",
@@ -90,7 +94,8 @@
         "PDD"
       ],
       "index": "^HSI",
-      "fx": "HKDEUR=X"
+      "fx": "HKDEUR=X",
+      "sa": "quote/hkg/9988"
     },
     {
       "ticker": "HKG:1211",
@@ -108,7 +113,8 @@
         "NIO"
       ],
       "index": "^HSI",
-      "fx": "HKDEUR=X"
+      "fx": "HKDEUR=X",
+      "sa": "quote/hkg/1211"
     },
     {
       "ticker": "NASDAQ:NFLX",
@@ -127,7 +133,8 @@
         "SPOT"
       ],
       "index": "^IXIC",
-      "fx": "USDEUR=X"
+      "fx": "USDEUR=X",
+      "sa": "stocks/nflx"
     },
     {
       "ticker": "NASDAQ:GRAB",
@@ -146,7 +153,8 @@
         "DASH"
       ],
       "index": "^IXIC",
-      "fx": "USDEUR=X"
+      "fx": "USDEUR=X",
+      "sa": "stocks/grab"
     },
     {
       "ticker": "NASDAQ:SONO",
@@ -165,7 +173,8 @@
         "GPRO"
       ],
       "index": "^IXIC",
-      "fx": "USDEUR=X"
+      "fx": "USDEUR=X",
+      "sa": "stocks/sono"
     },
     {
       "ticker": "OTCMKTS:DIDIY",
@@ -185,7 +194,8 @@
         "LYFT"
       ],
       "index": "^HSI",
-      "fx": "USDEUR=X"
+      "fx": "USDEUR=X",
+      "sa": "quote/otc/DIDIY"
     }
   ],
   "earnings_overrides": {

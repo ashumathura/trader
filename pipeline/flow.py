@@ -446,6 +446,24 @@ def options_for(sym, today, closes):
     return res
 
 
+def expected_moves(sym, today):
+    """Options-implied move to the next few expiries from the at-the-money straddle (call mid + put mid), as % of spot."""
+    txt = lib.cached_get("https://cdn.cboe.com/api/global/delayed_quotes/options/%s.json" % sym, 900, "options", validate=lambda t: '"options"' in t, timeout=60)
+    if not txt: return None
+    try:
+        spot, ch = parse_chain(lib._json_after(txt))
+    except Exception as e:
+        print("expected move parse failed", sym, e, file=__import__("sys").stderr); return None
+    out = []
+    for e in sorted({c["exp"] for c in ch if 0 <= (c["exp"] - today).days <= 14})[:4]:
+        cs = [c for c in ch if c["exp"] == e and c["mid"] > 0 and c.get("spread", 0) < 0.5]
+        for k in sorted({c["strike"] for c in cs}, key=lambda k: abs(k - spot))[:4]:
+            call = next((c for c in cs if c["strike"] == k and c["type"] == "C"), None); put = next((c for c in cs if c["strike"] == k and c["type"] == "P"), None)
+            if call and put:
+                out.append({"exp": e.isoformat(), "dte": (e - today).days, "strike": k, "straddle": call["mid"] + put["mid"], "move_pct": (call["mid"] + put["mid"]) / spot * 100}); break
+    return {"symbol": sym, "spot": spot, "moves": out} if out else None
+
+
 # ----------------------------------------------------------------------------- assemble per stock
 def overall(parts):
     """Combine component tones into one flow verdict."""
