@@ -12,7 +12,8 @@ import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib
-from lib import yahoo_chart, compute_tech, stock_news, themes_of, parse_rss, cached_get, MARKET_FEEDS, INDICES, STATUS
+from lib import (yahoo_chart, compute_tech, stock_news, themes_of, parse_rss, cached_get, estimate_next_dividend,
+                 MARKET_FEEDS, INDICES, STATUS)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "docs", "data")
@@ -67,7 +68,7 @@ def news(data):
 def market():
     def quote(item):
         sym, name = item
-        d = yahoo_chart(sym, "1mo", "1d", ttl=600)
+        d = yahoo_chart(sym, "1mo", "1d", ttl=600, drop_partial=False)
         if not d or len(d["bars"]["c"]) < 2: return {"symbol": sym, "name": name, "price": None}
         c = d["bars"]["c"]
         return {"symbol": sym, "name": name, "price": c[-1], "chg_pct": (c[-1] / c[-2] - 1) * 100, "spark": c[-22:]}
@@ -88,17 +89,14 @@ def market():
                           "drivers": [{"theme": t, "count": c, "headlines": sample.get(t, [])} for t, c in th[:6]]})
 
 def calendar(data):
-    today = dt.date.today(); ev = []
+    today = dt.datetime.now(dt.timezone.utc).date(); ev = []
     # 1) dividends: estimated from each stock's own history
     for t in TICKERS:
         d = data.get(t["yahoo"]); dv = d["divs"] if d else []
-        if len(dv) < 2: continue
-        dates = [dt.datetime.utcfromtimestamp(x[0]).date() for x in dv]
-        gaps = [(dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
-        gap = statistics.median(gaps[-4:])
-        if not 20 <= gap <= 400: continue
-        nxt = dates[-1] + dt.timedelta(days=int(gap))
-        while nxt < today: nxt += dt.timedelta(days=int(gap))
+        dates = [dt.datetime.fromtimestamp(x[0], dt.timezone.utc).date() for x in dv]
+        est = estimate_next_dividend(dates, today)
+        if not est: continue
+        nxt, gap = est
         ev.append({"date": nxt.isoformat(), "kind": "dividend", "ticker": t["ticker"], "approx": True,
                    "title": "%s ex-dividend (est.)" % t["ticker"].split(":")[-1],
                    "detail": "Last %s: %.4g, cadence about every %d days" % (dates[-1].isoformat(), dv[-1][1], gap)})
@@ -124,11 +122,24 @@ def calendar(data):
     ev.sort(key=lambda e: e["date"])
     write("calendar.json", {"events": ev, "today": today.isoformat()})
 
+def write_index(updated, ok):
+    html = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Market data layer</title>
+<body style="font:15px system-ui;background:#0f1117;color:#e0e0e0;padding:40px;max-width:640px"><h2>Market data layer</h2>
+<p>Public market data (prices, technicals, news, calendar). Contains no personal portfolio information.</p>
+<p>Last updated %s UTC, %d of %d tickers fetched.</p>
+<p>%s</p></body>
+""" % (updated.rstrip("Z").replace("T", " "), ok, len(TICKERS), " &middot; ".join(
+        '<a style="color:#a5b4fc" href="data/%s.json">%s.json</a>' % (n, n)
+        for n in ("meta", "technicals", "prices", "news", "market", "calendar")))
+    with open(os.path.join(ROOT, "docs", "index.html"), "w", encoding="utf-8") as f: f.write(html)
+    print("wrote index.html")
+
 if __name__ == "__main__":
     data = charts()
     technicals(data); prices(data); news(data); market(); calendar(data)
     ok = sum(1 for d in data.values() if d)
-    write("meta.json", {"updated": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z", "tickers_ok": ok,
-                        "tickers_total": len(TICKERS), "status": dict(STATUS)})
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds") + "Z"
+    write("meta.json", {"updated": now, "tickers_ok": ok, "tickers_total": len(TICKERS), "status": dict(STATUS)})
+    write_index(now, ok)
     if ok == 0:
         print("WARNING: no price data fetched (Yahoo may be blocking this network)"); sys.exit(1)

@@ -7,10 +7,17 @@ A GitHub Action refreshes market data every 30 minutes on weekdays and publishes
 The only portfolio-related file is `watchlist.json` (tickers). The personal dashboard runs on your own computer, reads your holdings from your sheet, and combines them with these public files in your browser.
 
 ## One-time setup
-1. Run `./push.sh` in this folder (it places the workflow file in `.github/workflows/` and pushes). Or push this folder manually to https://github.com/ashumathura/trader (see `push.sh`).
+1. Push this repo to https://github.com/ashumathura/trader (`./push.sh` does it). The workflow already lives in `.github/workflows/update-data.yml`; pushing workflow files needs a token with the `workflow` scope.
 2. Repo Settings > Pages > Source: **GitHub Actions**.
 3. Optional: Settings > Secrets and variables > Actions > New secret `AV_KEY` (your Alpha Vantage key) for earnings dates. Never commit the key.
 4. Actions tab > "Update market data" > Run workflow. After about a minute, https://ashumathura.github.io/trader/data/meta.json should open.
+
+## Local dashboard (private)
+`dashboard/index.html` is **not** published (Pages only serves `docs/`). Open it from disk in your browser. It fetches the public JSON from Pages and your holdings from a published-CSV link of your sheet (or a CSV file you pick). The link is kept only in that browser's localStorage. Columns: `ticker` (same names as `watchlist.json`), `quantity`, optional `cost` and `currency`; a row with ticker `CASH` is a cash position. Tickers missing from `watchlist.json` get no market data, so add them there.
+Do not save exports of your sheet inside this repo; `dashboard/local/` and `*.private.*` are git-ignored as a safety net.
+
+## Development
+`python3 -m unittest discover -s tests` runs the tests (also run in CI before each build). Technical signals use the last *completed* daily bar: while a market is open, the forming bar is dropped.
 
 ## Edit the watchlist
 Add or remove tickers in `watchlist.json` (`ticker` = the Google Finance style name from your sheet, `yahoo` = Yahoo symbol). Commit and the next run picks it up. `earnings_overrides` lets you pin an earnings date, `macro_events` adds Fed, CPI and similar dates.
