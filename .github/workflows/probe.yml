@@ -1,0 +1,13 @@
+name: Probe (temporary)
+on:
+  push:
+    branches: [claude/gracious-mayer-9c2fdj]
+    paths: [".github/workflows/probe.yml", "pipeline/probe.py"]
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 pipeline/probe.py
+        env: { AV_KEY: "${{ secrets.AV_KEY }}" }
