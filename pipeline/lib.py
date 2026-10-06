@@ -296,30 +296,28 @@ def themes_of(titles):
 def parse_rss(txt, limit=25):
     items = []
     try:
-        root = ET.fromstring(txt)
+        root = ET.fromstring(txt.lstrip("\ufeff \r\n\t"))
         for it in root.iter("item"):
             title = (it.findtext("title") or "").strip()
             if not title: continue
             pd = it.findtext("pubDate") or ""
             try: ts = dt.datetime.strptime(pd[:25], "%a, %d %b %Y %H:%M:%S").isoformat()
             except Exception: ts = ""
-            src = it.findtext("source") or ""
+            src = (it.findtext("source") or "").strip()
+            if src and title.endswith(" - " + src): title = title[:-len(" - " + src)]  # Google News appends the outlet
             items.append({"title": title, "link": (it.findtext("link") or "").strip(), "time": ts, "source": src, "tone": tone(title)})
             if len(items) >= limit: break
     except Exception: pass
     return items
-
-def stock_news(sym):
-    url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%s&region=US&lang=en-US" % urllib.parse.quote(sym)
-    txt = cached_get(url, 900, "news")
-    return parse_rss(txt, 15) if txt else []
-
 
 MARKET_FEEDS = [
     ("CNBC", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
     ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
     ("Investing.com", "https://www.investing.com/rss/news_25.rss"),
 ]
-INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^HSI", "Hang Seng"),
-           ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold"), ("BTC-USD", "Bitcoin")]
-
+CENTRAL_BANK_FEEDS = [
+    ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
+    ("ECB", "https://www.ecb.europa.eu/rss/press.html"),
+]
+INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^FTSE", "FTSE 100"),
+           ("^HSI", "Hang Seng"), ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold")]

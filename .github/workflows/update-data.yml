@@ -6,7 +6,7 @@ on:
     - cron: "15 6 * * 0,6"          # weekends: once
   push:
     branches: [main]
-    paths: ["watchlist.json", "pipeline/**", ".github/workflows/update-data.yml"]
+    paths: ["watchlist.json", "pipeline/**", "site/**", ".github/workflows/update-data.yml"]
   workflow_dispatch: {}
 
 permissions:

@@ -131,7 +131,11 @@ async function load(){
   $("msg").textContent = "Loading...";
   state.base = ($("base").value.trim() || DEFAULT_BASE).replace(/\/$/,"");
   try {
-    const [meta, tech, prices, news, market, cal] = await Promise.all(["meta","technicals","prices","news","market","calendar"].map(n=>getJSON(n+".json")));
+    const [meta, stk, market, cal] = await Promise.all(["meta","stocks","market","calendar"].map(n=>getJSON(n+".json")));
+    const S = stk.stocks, ok = S.filter(x => x.status === "ok");
+    const tech = {items: S.map(x => ({ticker: x.ticker, tech: x.status !== "ok" ? null : {last: x.price.last, ret_1m: x.returns["1m"], ret_ytd: x.returns.ytd, rsi: x.tech.rsi, score: x.confluence.score, rating: x.bias, signals: x.signals}}))};
+    const prices = Object.fromEntries(ok.map(x => [x.ticker, {c: x.chart.c}]));
+    const news = {stocks: S.map(x => ({ticker: x.ticker, mood: x.news.mood || "n/a", summary: x.news.summary, items: x.news.items}))};
     if (seq !== loadSeq) return;
     $("stamp").textContent = "data updated " + meta.updated.replace("T"," ").replace("Z"," UTC");
     state.dataWarn = meta.tickers_ok ? "" : '<span class="warn">The public data has no prices (Yahoo rate-limited the GitHub servers). Run <code>python3 dashboard/serve.py</code> on your computer to fetch them locally. </span>';
