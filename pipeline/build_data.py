@@ -142,4 +142,6 @@ if __name__ == "__main__":
     write("meta.json", {"updated": now, "tickers_ok": ok, "tickers_total": len(TICKERS), "status": dict(STATUS)})
     write_index(now, ok)
     if ok == 0:
-        print("WARNING: no price data fetched (Yahoo may be blocking this network)"); sys.exit(1)
+        # Still exit 0: the other files (market headlines, meta status) are useful, and a red run
+        # would stop the cache save and the deploy. Consumers see tickers_ok = 0 in meta.json.
+        print("WARNING: no price data fetched (Yahoo may be rate limiting this network)")
