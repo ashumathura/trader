@@ -76,7 +76,18 @@ function holdingsFromCSV(text){
   }
   return {pos, cash};
 }
-async function getJSON(name){ const r = await fetch(state.base + "/" + name + "?t=" + Date.now()); if(!r.ok) throw new Error(name + " " + r.status); return r.json(); }
+async function fetchOk(url, what){ // names the failing request instead of the browser's bare "Load failed"
+  let r; try { r = await fetch(url); } catch (e) { throw new Error(`Could not reach ${what} (${e.message}). The browser blocked or could not complete the request.`); }
+  if (!r.ok) throw new Error(`${what} returned HTTP ${r.status}.`); return r;
+}
+async function getJSON(name){ return (await fetchOk(state.base + "/" + name + "?t=" + Date.now(), "public data file " + name)).json(); }
+// Turns a normal Google Sheets link into the CSV endpoint that allows cross-origin reads. Published (/d/e/) links pass through.
+function sheetCsvUrl(u){
+  const m = u.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/(?!e\/)([\w-]+)/);
+  if (!m) return u;
+  const gid = (u.match(/[#&?]gid=(\d+)/) || [])[1];
+  return `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv${gid ? "&gid=" + gid : ""}`;
+}
 
 function renderMarkets(m){
   $("mkt").innerHTML = (m.quotes||[]).filter(q=>q.price!=null).map(q =>
@@ -123,7 +134,11 @@ async function load(){
     $("stamp").textContent = "data updated " + meta.updated.replace("T"," ").replace("Z"," UTC");
     renderMarkets(market);
     let text = state.csvText;
-    if (!text && $("sheet").value.trim()) { const r = await fetch($("sheet").value.trim()); if(!r.ok) throw new Error("Sheet fetch failed: " + r.status + ". Use the published CSV link or the file picker."); text = await r.text(); }
+    if (!text && $("sheet").value.trim()) {
+      try { text = await (await fetchOk(sheetCsvUrl($("sheet").value.trim()), "your Google Sheet")).text(); }
+      catch (e) { $("msg").innerHTML = `<span class="dn">${esc(e.message)}</span> <span class="mut">Market data above is fine. Check the sheet is shared as "Anyone with the link can view" or use File > Share > Publish to web (CSV), or export a CSV and use the file picker.</span>`; return; }
+      if (/^\s*</.test(text)) { $("msg").innerHTML = '<span class="dn">The sheet link returned a web page instead of CSV (probably a sign-in page). Share it as "Anyone with the link" or use Publish to web / the file picker.</span>'; return; }
+    }
     const h = text ? holdingsFromCSV(text) : {pos: [], cash: []};
     if (h.pos.length || h.cash.length) render({tech, prices, news, cal, pos: h.pos, cash: h.cash});
     $("msg").innerHTML = !h.pos.length ? "No holdings loaded yet." : state.unknown?.length ? `<span class="warn">Not in watchlist.json, no market data: ${esc(state.unknown.join(", "))}</span>` : "";
