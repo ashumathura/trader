@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: "*/30 6-21 * * 1-5"     # every 30 min on weekdays (UTC)
     - cron: "15 6 * * 0,6"          # weekends: once
+  push:
+    branches: [main]
+    paths: ["watchlist.json", "pipeline/**", ".github/workflows/update-data.yml"]
   workflow_dispatch: {}
 
 permissions:
@@ -22,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+      - name: Run tests
+        run: python3 -m unittest discover -s tests -v
       - name: Restore cache (keeps old data if Yahoo fails once)
         uses: actions/cache@v4
         with:

@@ -37,7 +37,7 @@ def cached_get(url, ttl, source=None, timeout=15):
 _mem = {}
 
 # ----------------------------------------------------------------------------- yahoo prices
-def yahoo_chart(sym, rng="2y", interval="1d", ttl=3600):
+def yahoo_chart(sym, rng="2y", interval="1d", ttl=3600, drop_partial=True):
     url = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s&events=div" % (
         urllib.parse.quote(sym), rng, interval)
     txt = cached_get(url, ttl, "yahoo")
@@ -53,9 +53,40 @@ def yahoo_chart(sym, rng="2y", interval="1d", ttl=3600):
             for k, kk in (("o", "open"), ("h", "high"), ("l", "low"), ("c", "close"), ("v", "volume")):
                 bars[k].append(q[kk][i] if q[kk][i] is not None else q["close"][i])
         divs = sorted((d["date"], d["amount"]) for d in (res.get("events", {}).get("dividends", {}) or {}).values())
-        return {"bars": bars, "divs": divs, "meta": res.get("meta", {})}
+        meta = res.get("meta", {})
+        if drop_partial and market_open(meta, time.time()) and len(bars["t"]) > 1:
+            for k in bars: bars[k].pop()
+        return {"bars": bars, "divs": divs, "meta": meta}
     except Exception:
         return None
+
+def market_open(meta, now):
+    """True while the regular session is running, i.e. Yahoo's newest daily bar is still forming."""
+    try:
+        reg = meta["currentTradingPeriod"]["regular"]
+        return reg["start"] <= now < reg["end"]
+    except Exception:
+        return False
+
+def ytd_return(t, c):
+    """Return since the last close of the previous calendar year (None if history starts this year)."""
+    year = dt.datetime.fromtimestamp(t[-1], dt.timezone.utc).year
+    prev = [x for ts, x in zip(t, c) if dt.datetime.fromtimestamp(ts, dt.timezone.utc).year < year]
+    return (c[-1] / prev[-1] - 1) * 100 if prev else None
+
+CADENCES = (30, 91, 182, 365)
+
+def estimate_next_dividend(dates, today):
+    """Project the next ex-dividend date from past ones. Snaps the typical gap to monthly,
+    quarterly, semi-annual or annual so irregular real-world gaps still give a sensible date."""
+    if len(dates) < 2: return None
+    gaps = [(dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
+    gap = statistics.median(gaps[-4:])
+    snapped = min(CADENCES, key=lambda x: abs(x - gap))
+    if abs(snapped - gap) > snapped * 0.25: return None
+    nxt = dates[-1] + dt.timedelta(days=snapped)
+    while nxt < today: nxt += dt.timedelta(days=snapped)
+    return nxt, snapped
 
 # ----------------------------------------------------------------------------- technicals
 def sma(v, n):
@@ -155,7 +186,7 @@ def compute_tech(bars):
     if last < bb_lo: sigs.append({"label": "Below lower Bollinger", "tone": "neutral", "detail": "Stretched, watch for bounce"})
     if squeeze: sigs.append({"label": "Volatility squeeze", "tone": "neutral", "detail": "Bollinger width at a 6 month low, move may be near"})
     rating = "Bullish" if score >= 2 else "Bearish" if score <= -2 else "Neutral"
-    # regime proxy (full HMM lives in engine/regime_engine.py)
+    # simple volatility-based regime proxy
     rets = [math.log(c[i] / c[i - 1]) for i in range(max(1, n - 60), n)]
     vol_ann = statistics.pstdev(rets) * math.sqrt(252) * 100 if len(rets) > 5 else None
     k = max(0, n - 130)
@@ -164,7 +195,7 @@ def compute_tech(bars):
         "rsi": r[-1], "macd": macd[-1], "macd_signal": sig[-1], "atr": a[-1], "atr_pct": a[-1] / last * 100 if a[-1] else None,
         "sma20": s20[-1], "sma50": s50[-1], "sma200": s200[-1], "bb_up": bb_up, "bb_lo": bb_lo,
         "hi52": hi52, "lo52": lo52, "hi20": hi20, "lo20": lo20, "vol_ratio": vol_ratio, "vol_ann": vol_ann,
-        "ret_1w": ret(5), "ret_1m": ret(21), "ret_3m": ret(63), "ret_ytd": None, "ret_1y": ret(251),
+        "ret_1w": ret(5), "ret_1m": ret(21), "ret_3m": ret(63), "ret_ytd": ytd_return(t, c), "ret_1y": ret(251),
         "support": lo20, "resistance": hi20,
         "chart": {"t": t[k:], "c": c[k:], "s50": s50[k:], "s200": s200[k:], "v": v[k:]},
     }

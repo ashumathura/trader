@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Local portfolio dashboard</title>
+<!--
+  LOCAL ONLY. Open this file straight from disk (double click). It is not in docs/, so GitHub Pages never publishes it.
+  It contains no personal data itself: your sheet link and holdings live only in this browser (localStorage)
+  and are fetched/read on your computer. Never paste them into a file inside this repo.
+-->
+<style>
+:root{--bg:#0f1117;--card:#181b24;--line:#272b38;--tx:#e0e0e0;--mut:#8b90a0;--acc:#a5b4fc;--up:#4ade80;--dn:#f87171;--warn:#fbbf24}
+*{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:20px;max-width:1200px;margin:auto}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:0 0 10px;color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:14px 0;overflow-x:auto}
+table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child,td.l,th.l{text-align:left}th{color:var(--mut);font-weight:500;cursor:pointer}
+.up{color:var(--up)}.dn{color:var(--dn)}.mut{color:var(--mut)}.warn{color:var(--warn)}
+.strip{display:flex;gap:10px;flex-wrap:wrap}.q{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:120px}
+.q b{display:block;font-size:15px}.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid var(--line);margin:1px}
+.pill.bull{color:var(--up)}.pill.bear{color:var(--dn)}
+input,button,textarea{background:var(--bg);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+input[type=text]{width:100%}button{cursor:pointer;color:var(--acc)}a{color:var(--acc)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+ul{margin:0;padding-left:18px}li{margin:3px 0}
+</style></head><body>
+<h1>Portfolio dashboard <span class="mut" id="stamp"></span></h1>
+<div class="mut">Public market data from GitHub Pages, combined with your holdings in this browser only.</div>
+
+<div class="card" id="settings">
+  <h2>Setup</h2>
+  <div class="row"><label style="min-width:150px">Public data URL</label><input type="text" id="base"></div>
+  <div class="row"><label style="min-width:150px">Sheet CSV URL</label><input type="text" id="sheet" placeholder="Google Sheet > File > Share > Publish to web > CSV link (stays in this browser)"></div>
+  <div class="row"><label style="min-width:150px">or CSV file</label><input type="file" id="file" accept=".csv,text/csv"></div>
+  <div class="mut">Expected columns (any order, case-insensitive): <b>ticker</b> (same names as watchlist.json, e.g. AMS:ASML), <b>quantity</b> (or shares), <b>cost</b> (average price paid, optional), <b>currency</b> (optional).
+    A row with ticker <code>CASH</code> and currency counts as a cash position, quantity being the amount.</div>
+  <div class="row"><button id="save">Save and refresh</button><button id="forget">Forget my data</button><span id="msg" class="mut"></span></div>
+</div>
+
+<div class="card"><h2>Markets</h2><div class="strip" id="mkt"></div></div>
+<div class="card"><h2>Holdings</h2><div id="hold" class="mut">Add your sheet above to see holdings.</div><div id="cash"></div></div>
+<div class="grid">
+  <div class="card"><h2>Upcoming events (your holdings and macro)</h2><div id="cal"></div></div>
+  <div class="card"><h2>Market drivers</h2><div id="drv"></div></div>
+</div>
+<div class="card"><h2>News on your holdings</h2><div id="news"></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u) ? esc(u) : "#";
+const store = {get(k){try{return localStorage.getItem(k)||""}catch(e){return ""}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}}};
+const DEFAULT_BASE = "https://ashumathura.github.io/trader/data";
+const fmt = (x, d=2) => x == null || isNaN(x) ? "-" : Number(x).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
+const pct = x => x == null || isNaN(x) ? '<span class="mut">-</span>' : `<span class="${x>=0?"up":"dn"}">${x>=0?"+":""}${fmt(x)}%</span>`;
+let state = {rows: [], sort: "value", desc: true, csvText: ""};
+
+function parseCSV(t){ // minimal RFC4180 parser
+  const rows=[]; let r=[], f="", q=false;
+  for (let i=0;i<t.length;i++){const c=t[i];
+    if(q){ if(c=='"'){ if(t[i+1]=='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c=='"') q=true; else if(c==","){r.push(f);f=""} else if(c=="\n"||c=="\r"){ if(c=="\r"&&t[i+1]=="\n")i++; r.push(f);f=""; if(r.some(x=>x.trim()))rows.push(r); r=[] } else f+=c }
+  r.push(f); if(r.some(x=>x.trim()))rows.push(r); return rows;
+}
+const num = s => { const v = parseFloat(String(s ?? "").replace(/[^0-9.\-]/g, "")); return isNaN(v) ? null : v };
+function holdingsFromCSV(text){
+  const t = parseCSV(text); if (t.length < 2) return {pos: [], cash: []};
+  const head = t[0].map(h => h.trim().toLowerCase());
+  const col = (...names) => head.findIndex(h => names.some(n => h === n || h.includes(n)));
+  const iT = col("ticker","symbol"), iQ = col("quantity","qty","shares","units"), iC = col("cost","avg","price paid"), iCur = col("currency","ccy");
+  if (iT < 0 || iQ < 0) throw new Error("Need ticker and quantity columns. Found: " + head.join(", "));
+  const pos = [], cash = [];
+  for (const r of t.slice(1)) {
+    const tk = (r[iT] || "").trim(), q = num(r[iQ]); if (!tk || q == null) continue;
+    const cur = iCur >= 0 ? (r[iCur] || "").trim() : "";
+    if (/^cash/i.test(tk)) cash.push({ccy: cur || tk.replace(/^cash[:\s-]*/i,"") || "?", amount: q});
+    else pos.push({ticker: tk, qty: q, cost: iC >= 0 ? num(r[iC]) : null, ccy: cur});
+  }
+  return {pos, cash};
+}
+async function getJSON(name){ const r = await fetch(state.base + "/" + name + "?t=" + Date.now()); if(!r.ok) throw new Error(name + " " + r.status); return r.json(); }
+
+function renderMarkets(m){
+  $("mkt").innerHTML = (m.quotes||[]).filter(q=>q.price!=null).map(q =>
+    `<div class="q"><span class="mut">${esc(q.name)}</span><b>${fmt(q.price)}</b>${pct(q.chg_pct)}</div>`).join("") || '<span class="mut">No market data</span>';
+  $("drv").innerHTML = (m.drivers||[]).map(d => `<div><b>${esc(d.theme)}</b> <span class="mut">(${d.count})</span><ul>${
+    d.headlines.map(h=>`<li><a href="${safeUrl(h.link)}" target="_blank" rel="noopener">${esc(h.title)}</a></li>`).join("")}</ul></div>`).join("") || '<span class="mut">None</span>';
+}
+function renderHoldings(){
+  const rows = state.rows.slice().sort((a,b)=>{const x=a[state.sort], y=b[state.sort]; const r = typeof x==="string" ? x.localeCompare(y) : (x??-Infinity)-(y??-Infinity); return state.desc?-r:r});
+  const th = (k,l) => `<th data-k="${k}" class="${k==="ticker"?"l":""}">${l}${state.sort===k?(state.desc?" ▼":" ▲"):""}</th>`;
+  $("hold").innerHTML = `<table><tr>${th("ticker","Ticker")}${th("qty","Qty")}${th("last","Last")}${th("day","Day")}${th("value","Value")}${th("pl","P/L")}${th("plp","P/L %")}${th("ret_1m","1M")}${th("ret_ytd","YTD")}${th("rsi","RSI")}${th("score","Signal")}<th class="l">Notes</th></tr>${
+    rows.map(r=>`<tr><td>${esc(r.ticker)}</td><td>${fmt(r.qty,r.qty%1?2:0)}</td><td>${r.last==null?'<span class="warn">no data</span>':fmt(r.last)}</td><td>${pct(r.day)}</td><td>${fmt(r.value,0)}</td>
+    <td>${r.pl==null?"-":`<span class="${r.pl>=0?"up":"dn"}">${fmt(r.pl,0)}</span>`}</td><td>${pct(r.plp)}</td><td>${pct(r.ret_1m)}</td><td>${pct(r.ret_ytd)}</td><td>${fmt(r.rsi,0)}</td>
+    <td><span class="${r.rating==="Bullish"?"up":r.rating==="Bearish"?"dn":"mut"}">${esc(r.rating||"-")}</span></td>
+    <td class="l">${(r.signals||[]).filter(s=>s.tone!=="neutral").slice(0,3).map(s=>`<span class="pill ${s.tone}" title="${esc(s.detail)}">${esc(s.label)}</span>`).join("")}</td></tr>`).join("")}</table>
+    <div class="mut" style="margin-top:6px">Values are in each stock's own trading currency; no FX conversion. Last = latest completed daily close.</div>`;
+  $("hold").querySelectorAll("th[data-k]").forEach(h=>h.onclick=()=>{const k=h.dataset.k; state.desc = state.sort===k ? !state.desc : true; state.sort=k; renderHoldings()});
+}
+function render(d){
+  const tech = Object.fromEntries(d.tech.items.map(i=>[i.ticker,i.tech])), px = d.prices, news = Object.fromEntries(d.news.stocks.map(s=>[s.ticker,s]));
+  state.rows = d.pos.map(p=>{
+    const t = tech[p.ticker], series = px[p.ticker]?.c, last = t?.last ?? (series ? series[series.length-1] : null);
+    const day = series && series.length>1 ? (series[series.length-1]/series[series.length-2]-1)*100 : null;
+    const value = last==null ? null : last*p.qty, pl = p.cost!=null && last!=null ? (last-p.cost)*p.qty : null;
+    return {...p, last, day, value, pl, plp: p.cost && last!=null ? (last/p.cost-1)*100 : null, ret_1m: t?.ret_1m, ret_ytd: t?.ret_ytd, rsi: t?.rsi, score: t?.score, rating: t?.rating, signals: t?.signals};
+  });
+  renderHoldings();
+  $("cash").innerHTML = d.cash.length ? `<h2 style="margin-top:14px">Cash</h2>` + d.cash.map(c=>`<span class="pill">${esc(c.ccy)} ${fmt(c.amount,0)}</span>`).join("") : "";
+  const held = new Set(d.pos.map(p=>p.ticker)), unknown = d.pos.filter(p=>!(p.ticker in tech)).map(p=>p.ticker);
+  state.unknown = unknown;
+  const ev = (d.cal.events||[]).filter(e=>!e.ticker||held.has(e.ticker)).slice(0,25);
+  $("cal").innerHTML = `<table>${ev.map(e=>`<tr><td>${esc(e.date)}</td><td class="l">${esc(e.title)}${e.approx?' <span class="mut">~</span>':""}</td><td class="l mut">${esc(e.kind)}</td></tr>`).join("")}</table>` || '<span class="mut">None</span>';
+  $("news").innerHTML = d.pos.map(p=>news[p.ticker]).filter(Boolean).map(s=>`<div style="margin-bottom:12px"><b>${esc(s.ticker)}</b> <span class="mut">${esc(s.mood)}</span><div class="mut">${esc(s.summary)}</div><ul>${
+    s.items.slice(0,4).map(h=>`<li><a href="${safeUrl(h.link)}" target="_blank" rel="noopener">${esc(h.title)}</a> <span class="mut">${esc(h.source)}</span></li>`).join("")}</ul></div>`).join("") || '<span class="mut">None</span>';
+}
+let loadSeq = 0;
+async function load(){
+  const seq = ++loadSeq; // ignore results of an older, slower load
+  $("msg").textContent = "Loading...";
+  state.base = ($("base").value.trim() || DEFAULT_BASE).replace(/\/$/,"");
+  try {
+    const [meta, tech, prices, news, market, cal] = await Promise.all(["meta","technicals","prices","news","market","calendar"].map(n=>getJSON(n+".json")));
+    if (seq !== loadSeq) return;
+    $("stamp").textContent = "data updated " + meta.updated.replace("T"," ").replace("Z"," UTC");
+    renderMarkets(market);
+    let text = state.csvText;
+    if (!text && $("sheet").value.trim()) { const r = await fetch($("sheet").value.trim()); if(!r.ok) throw new Error("Sheet fetch failed: " + r.status + ". Use the published CSV link or the file picker."); text = await r.text(); }
+    const h = text ? holdingsFromCSV(text) : {pos: [], cash: []};
+    if (h.pos.length || h.cash.length) render({tech, prices, news, cal, pos: h.pos, cash: h.cash});
+    $("msg").innerHTML = !h.pos.length ? "No holdings loaded yet." : state.unknown?.length ? `<span class="warn">Not in watchlist.json, no market data: ${esc(state.unknown.join(", "))}</span>` : "";
+  } catch (e) { if (seq === loadSeq) $("msg").innerHTML = `<span class="dn">${esc(e.message)}</span>`; }
+}
+$("base").value = store.get("trader.base") || DEFAULT_BASE; $("sheet").value = store.get("trader.sheet");
+$("save").onclick = () => { store.set("trader.base", $("base").value.trim()); store.set("trader.sheet", $("sheet").value.trim()); load(); };
+$("forget").onclick = () => { ["trader.base","trader.sheet"].forEach(store.del); $("sheet").value = ""; state.csvText = ""; state.rows = []; $("hold").textContent = ""; $("cash").textContent = ""; $("news").textContent = ""; $("msg").textContent = "Cleared."; };
+$("file").onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { state.csvText = t; load(); }); };
+load(); setInterval(load, 15*60*1000);
+</script></body></html>
