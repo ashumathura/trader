@@ -3,33 +3,61 @@
   "tickers": [
     {
       "ticker": "AMS:ASML",
+      "afm": "ASML Holding",
       "yahoo": "ASML.AS",
       "av": "ASML.AMS",
       "name": "ASML Holding",
       "sector": "Semiconductor equipment",
       "currency": "EUR",
       "exchange": "Euronext Amsterdam",
-      "news": "ASML"
+      "news": "ASML",
+      "adr": "ASML",
+      "etf": "SMH",
+      "peers": [
+        "NVDA",
+        "LRCX",
+        "KLAC"
+      ],
+      "index": "^AEX",
+      "sa": "quote/ams/ASML"
     },
     {
       "ticker": "AMS:ADYEN",
+      "afm": "Adyen",
       "yahoo": "ADYEN.AS",
       "av": "ADYEN.AMS",
       "name": "Adyen",
       "sector": "Payments",
       "currency": "EUR",
       "exchange": "Euronext Amsterdam",
-      "news": "Adyen"
+      "news": "Adyen",
+      "etf": "FINX",
+      "peers": [
+        "PYPL",
+        "FIS",
+        "GPN"
+      ],
+      "index": "^AEX",
+      "sa": "quote/ams/ADYEN"
     },
     {
       "ticker": "AMS:SLIGR",
+      "afm": "Sligro",
       "yahoo": "SLIGR.AS",
       "av": "SLIGR.AMS",
       "name": "Sligro Food Group",
       "sector": "Food distribution",
       "currency": "EUR",
       "exchange": "Euronext Amsterdam",
-      "news": "Sligro Food Group"
+      "news": "Sligro Food Group",
+      "etf": "XLP",
+      "peers": [
+        "SYY",
+        "AD.AS",
+        "CA.PA"
+      ],
+      "index": "^AEX",
+      "sa": "quote/ams/SLIGR"
     },
     {
       "ticker": "LON:LLOY",
@@ -39,7 +67,18 @@
       "sector": "Banking",
       "currency": "GBp",
       "exchange": "London Stock Exchange",
-      "news": "Lloyds Banking Group"
+      "news": "Lloyds Banking Group",
+      "adr": "LYG",
+      "fca": "Lloyds Banking Group",
+      "etf": "EUFN",
+      "peers": [
+        "BARC.L",
+        "NWG.L",
+        "HSBA.L"
+      ],
+      "index": "^FTSE",
+      "fx": "GBPEUR=X",
+      "sa": "quote/lon/LLOY"
     },
     {
       "ticker": "HKG:9988",
@@ -49,7 +88,17 @@
       "sector": "E-commerce and cloud",
       "currency": "HKD",
       "exchange": "Hong Kong",
-      "news": "Alibaba"
+      "news": "Alibaba",
+      "adr": "BABA",
+      "etf": "KWEB",
+      "peers": [
+        "BABA",
+        "JD",
+        "PDD"
+      ],
+      "index": "^HSI",
+      "fx": "HKDEUR=X",
+      "sa": "quote/hkg/9988"
     },
     {
       "ticker": "HKG:1211",
@@ -59,7 +108,16 @@
       "sector": "Electric vehicles",
       "currency": "HKD",
       "exchange": "Hong Kong",
-      "news": "BYD"
+      "news": "BYD",
+      "etf": "DRIV",
+      "peers": [
+        "TSLA",
+        "LI",
+        "NIO"
+      ],
+      "index": "^HSI",
+      "fx": "HKDEUR=X",
+      "sa": "quote/hkg/1211"
     },
     {
       "ticker": "NASDAQ:NFLX",
@@ -69,7 +127,17 @@
       "sector": "Streaming",
       "currency": "USD",
       "exchange": "NASDAQ",
-      "news": "Netflix"
+      "news": "Netflix",
+      "us": "NFLX",
+      "etf": "XLC",
+      "peers": [
+        "DIS",
+        "WBD",
+        "SPOT"
+      ],
+      "index": "^IXIC",
+      "fx": "USDEUR=X",
+      "sa": "stocks/nflx"
     },
     {
       "ticker": "NASDAQ:GRAB",
@@ -79,7 +147,17 @@
       "sector": "Southeast Asia super-app",
       "currency": "USD",
       "exchange": "NASDAQ",
-      "news": "Grab Holdings"
+      "news": "Grab Holdings",
+      "us": "GRAB",
+      "etf": "EEM",
+      "peers": [
+        "SE",
+        "UBER",
+        "DASH"
+      ],
+      "index": "^IXIC",
+      "fx": "USDEUR=X",
+      "sa": "stocks/grab"
     },
     {
       "ticker": "NASDAQ:SONO",
@@ -89,7 +167,17 @@
       "sector": "Consumer audio",
       "currency": "USD",
       "exchange": "NASDAQ",
-      "news": "Sonos"
+      "news": "Sonos",
+      "us": "SONO",
+      "etf": "XLY",
+      "peers": [
+        "AAPL",
+        "LOGI",
+        "GPRO"
+      ],
+      "index": "^IXIC",
+      "fx": "USDEUR=X",
+      "sa": "stocks/sono"
     },
     {
       "ticker": "OTCMKTS:DIDIY",
@@ -99,7 +187,56 @@
       "sector": "Ride-hailing",
       "currency": "USD",
       "exchange": "OTC Markets",
-      "news": "DiDi Global"
+      "news": "DiDi Global",
+      "us": "DIDIY",
+      "otc": true,
+      "etf": "KWEB",
+      "peers": [
+        "UBER",
+        "GRAB",
+        "LYFT"
+      ],
+      "index": "^HSI",
+      "fx": "USDEUR=X",
+      "sa": "quote/otc/DIDIY"
+    },
+    {
+      "ticker": "AMS:MICC",
+      "afm": "Magnum Ice Cream",
+      "yahoo": "MICC.AS",
+      "av": "MICC.AMS",
+      "name": "The Magnum Ice Cream Company",
+      "sector": "Ice cream and frozen foods",
+      "currency": "EUR",
+      "exchange": "Euronext Amsterdam",
+      "news": "Magnum Ice Cream Company",
+      "etf": "XLP",
+      "peers": [
+        "UL",
+        "NSRGY",
+        "DANOY"
+      ],
+      "index": "^AEX",
+      "sa": "quote/ams/MICC"
+    },
+    {
+      "ticker": "AMS:BFIT",
+      "afm": "Basic-Fit",
+      "yahoo": "BFIT.AS",
+      "av": "BFIT.AMS",
+      "name": "Basic-Fit",
+      "sector": "Fitness clubs",
+      "currency": "EUR",
+      "exchange": "Euronext Amsterdam",
+      "news": "Basic-Fit",
+      "etf": "XLY",
+      "peers": [
+        "PLNT",
+        "XPOF",
+        "LTH"
+      ],
+      "index": "^AEX",
+      "sa": "quote/ams/BFIT"
     }
   ],
   "earnings_overrides": {

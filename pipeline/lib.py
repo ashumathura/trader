@@ -16,7 +16,7 @@ def _path(url):
 
 _throttle_lock = threading.Lock()
 _last_call = {}
-MIN_GAP = {"r.jina.ai": 3.3}  # free tier allows about 20 requests per minute
+MIN_GAP = {"r.jina.ai": 3.3, "stockanalysis.com": 1.2}  # free tier allows about 20 requests per minute
 
 def _throttle(url):
     host = urllib.parse.urlparse(url).netloc
@@ -49,6 +49,27 @@ def cached_get(url, ttl, source=None, timeout=20, validate=None, headers=None):
         if os.path.exists(p):
             if source: STATUS.setdefault(source, "cached")
             return open(p, encoding="utf-8").read()
+        if source: STATUS.setdefault(source, "unavailable")
+        return None
+
+def cached_bytes(url, ttl, source=None, timeout=60):
+    """Like cached_get but for binary files (xlsx). Falls back to a stale copy on failure."""
+    p = _path(url) + ".bin"
+    if os.path.exists(p) and time.time() - os.path.getmtime(p) < ttl:
+        if source: STATUS.setdefault(source, "cached")
+        return open(p, "rb").read()
+    try:
+        _throttle(url)
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=timeout) as r:
+            blob = r.read()
+        open(p, "wb").write(blob)
+        if source: STATUS[source] = "live"
+        return blob
+    except Exception as e:
+        print("fetch failed [%s] %s: %s" % (source or "-", url.split("?")[0], e), file=sys.stderr)
+        if os.path.exists(p):
+            if source: STATUS.setdefault(source, "cached")
+            return open(p, "rb").read()
         if source: STATUS.setdefault(source, "unavailable")
         return None
 
@@ -319,5 +340,22 @@ CENTRAL_BANK_FEEDS = [
     ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
     ("ECB", "https://www.ecb.europa.eu/rss/press.html"),
 ]
-INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^FTSE", "FTSE 100"),
-           ("^HSI", "Hang Seng"), ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold")]
+MARKET = [
+    ("equity", "^GSPC", "S&P 500"), ("equity", "^IXIC", "Nasdaq"), ("equity", "^NDX", "Nasdaq 100"), ("equity", "^DJI", "Dow Jones"), ("equity", "^RUT", "Russell 2000"),
+    ("equity", "ES=F", "S&P 500 futures"), ("equity", "NQ=F", "Nasdaq futures"),
+    ("equity", "^AEX", "AEX"), ("equity", "^STOXX50E", "Euro Stoxx 50"), ("equity", "^STOXX", "STOXX 600"), ("equity", "^GDAXI", "DAX"), ("equity", "^FCHI", "CAC 40"),
+    ("equity", "^FTSE", "FTSE 100"), ("equity", "^IBEX", "IBEX 35"),
+    ("equity", "^N225", "Nikkei 225"), ("equity", "000001.SS", "Shanghai Composite"), ("equity", "^HSI", "Hang Seng"), ("equity", "^KS11", "Kospi"), ("equity", "^AXJO", "ASX 200"),
+    ("vol", "^VIX", "VIX"), ("vol", "^VIX9D", "VIX 9-day"), ("vol", "^VIX3M", "VIX 3-month"), ("vol", "^SKEW", "SKEW"),
+    ("vol", "^MOVE", "MOVE (rates volatility)"),
+    ("rates", "^TNX", "US 10Y yield (Yahoo)"),
+    ("fx", "DX-Y.NYB", "US dollar index"), ("fx", "EURUSD=X", "EUR/USD"), ("fx", "USDJPY=X", "USD/JPY"), ("fx", "EURGBP=X", "EUR/GBP"),
+    ("commodity", "CL=F", "Oil (WTI)"), ("commodity", "BZ=F", "Oil (Brent)"), ("commodity", "GC=F", "Gold"),
+    ("commodity", "HG=F", "Copper"),
+    ("crypto", "BTC-EUR", "Bitcoin (EUR)"), ("crypto", "ETH-EUR", "Ethereum (EUR)"),
+    ("sector", "XLK", "Technology"), ("sector", "XLF", "Financials"), ("sector", "XLE", "Energy"), ("sector", "XLV", "Health care"), ("sector", "XLY", "Consumer discretionary"),
+    ("sector", "XLP", "Consumer staples"), ("sector", "XLI", "Industrials"), ("sector", "XLU", "Utilities"), ("sector", "XLB", "Materials"), ("sector", "XLRE", "Real estate"),
+    ("sector", "XLC", "Communication services"),
+]
+
+INDICES = [(s, n) for _, s, n in MARKET]
