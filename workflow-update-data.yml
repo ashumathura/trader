@@ -1,0 +1,46 @@
+name: Update market data
+
+on:
+  schedule:
+    - cron: "*/30 6-21 * * 1-5"     # every 30 min on weekdays (UTC)
+    - cron: "15 6 * * 0,6"          # weekends: once
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Restore cache (keeps old data if Yahoo fails once)
+        uses: actions/cache@v4
+        with:
+          path: pipeline/.cache
+          key: datacache-${{ github.run_id }}
+          restore-keys: datacache-
+      - name: Build public data files
+        env:
+          AV_KEY: ${{ secrets.AV_KEY }}
+        run: python3 pipeline/build_data.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: docs }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.d.outputs.page_url }}
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

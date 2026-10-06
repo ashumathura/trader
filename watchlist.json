@@ -1,0 +1,20 @@
+{
+  "_note": "Public file. Tickers only: no funds, quantities, prices paid or values. Add extra well-known tickers here if you want your real holdings to be less obvious; the local dashboard only shows the ones you hold.",
+  "tickers": [
+    {"ticker": "AMS:ADYEN", "yahoo": "ADYEN.AS"},
+    {"ticker": "AMS:SLIGR", "yahoo": "SLIGR.AS"},
+    {"ticker": "OTCMKTS:DIDIY", "yahoo": "DIDIY"},
+    {"ticker": "AMS:ASML", "yahoo": "ASML.AS"},
+    {"ticker": "LON:LLOY", "yahoo": "LLOY.L"},
+    {"ticker": "NASDAQ:SONO", "yahoo": "SONO"},
+    {"ticker": "NASDAQ:GRAB", "yahoo": "GRAB"},
+    {"ticker": "HKG:9988", "yahoo": "9988.HK"},
+    {"ticker": "HKG:1211", "yahoo": "1211.HK"},
+    {"ticker": "NASDAQ:NFLX", "yahoo": "NFLX"}
+  ],
+  "earnings_overrides": {},
+  "macro_events": [
+    {"date": "2026-10-28", "title": "FOMC decision"},
+    {"date": "2026-12-09", "title": "FOMC decision"}
+  ]
+}
