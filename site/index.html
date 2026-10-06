@@ -34,6 +34,10 @@ svg text{fill:var(--mut);font-size:11px}
 .note{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--mut)}
 .err{border-color:var(--dn);color:var(--dn)}
 footer{margin-top:40px}
+table.kv td:first-child{color:var(--mut);width:34%}table.kv td.n{white-space:normal}
+h3.sec{font-size:15px;margin:26px 0 8px;padding:6px 10px;background:var(--card2);border-left:3px solid var(--acc);border-radius:4px}.secn{display:inline-block;min-width:22px;color:var(--acc);margin-right:6px}
+.bottom{background:var(--card2);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:10px 14px;margin-bottom:6px}
+.verdict{margin-top:12px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;background:var(--card2)}.verdict.up{border-left-color:var(--up)}.verdict.dn{border-left-color:var(--dn)}.verdict ul{margin:6px 0 0;padding-left:18px}
 @media (max-width:640px){body{font-size:14px}h1{font-size:22px}.sum-px{margin-left:0;text-align:left;width:100%}}
 </style></head><body><div class="wrap">
 <header>
@@ -47,7 +51,7 @@ footer{margin-top:40px}
 <h2 id="market">Market trends</h2><div id="marketBox"></div>
 <h2 id="heat">Heat map</h2><div id="heatBox" class="card tw"></div>
 <h2 id="stocks">Stocks</h2><div class="small mut">Tap a stock to open its full analysis.</div><div id="stockBox"></div>
-<h2 id="calendar">Calendar</h2><div id="calBox"></div>
+<h2 id="calendar">High-conviction calendar</h2><div id="calBox"></div>
 <h2 id="method">Method and limits</h2><div id="methodBox" class="card"></div>
 <footer class="small mut"><div class="note" style="margin-top:14px"><b>Not financial advice.</b> This page is an automated, descriptive analysis of public market data for educational use. Prices come from Yahoo Finance (or Alpha Vantage as a fallback) and may be delayed or wrong. Indicators, scores, regimes and price levels are rule-based outputs, not forecasts or recommendations. Verify with your broker before acting. Past performance does not predict future results.</div></footer>
 </div>
@@ -100,24 +104,147 @@ function probBar(p) {
 }
 
 // ---------- per-stock analysis text
+const vol = x => !num(x) ? "n/a" : x >= 1e9 ? f(x / 1e9, 2) + "B" : x >= 1e6 ? f(x / 1e6, 2) + "M" : x >= 1e3 ? f(x / 1e3, 0) + "k" : f(x, 0);
+const usd = x => num(x) ? "$" + vol(x) : "n/a";
+const dot = {green: "🟢", amber: "🟡", red: "🔴"};
+const tcls = t => t === "up" ? "b-up" : t === "dn" ? "b-dn" : "b-mid";
+const tword = t => t === "up" ? "Bullish" : t === "dn" ? "Bearish" : "Neutral";
+const kvt = rows => `<div class="tw"><table class="kv">${rows.filter(Boolean).map(r => `<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td class="${r[3] ? sigCls(r[3]) : ""}">${r[2] ?? ""}</td></tr>`).join("")}</table></div>`;
+const sec = (n, title, sub) => `<h3 class="sec"><span class="secn">${n}</span>${title}${sub ? `<span class="mut small"> ${sub}</span>` : ""}</h3>`;
+
+// ---------- technical snapshot rows
 function rows(s) {
   const t = s.tech, px = s.price.last, r = [];
   const add = (name, val, sig, tone) => r.push(`<tr><td>${name}</td><td class="n">${val}</td><td class="${sigCls(tone)}">${sig}</td></tr>`);
   if (num(t.rsi)) add("RSI (14)", f(t.rsi, 1), t.rsi >= 70 ? "Overbought" : t.rsi <= 30 ? "Oversold, bounce candidate" : t.rsi >= 50 ? "Bullish momentum" : "Weak momentum", t.rsi >= 70 ? "dn" : t.rsi <= 30 ? "up" : t.rsi >= 50 ? "up" : "mid");
   if (num(t.adx)) add("ADX (14)", f(t.adx, 1) + ` (+DI ${f(t.plus_di, 0)} / -DI ${f(t.minus_di, 0)})`, t.adx >= 25 ? (t.plus_di > t.minus_di ? "Strong uptrend" : "Strong downtrend") : t.adx >= 20 ? "Trend developing" : "Ranging, no trend", t.adx >= 20 ? (t.plus_di > t.minus_di ? "up" : "dn") : "mid");
-  if (num(t.macd)) add("MACD (12,26,9)", `${f(t.macd, 2)} / ${f(t.macd_signal, 2)}`, t.macd > t.macd_signal ? "Above signal line" : "Below signal line", t.macd > t.macd_signal ? "up" : "dn");
+  if (num(t.macd)) add("MACD (12,26,9)", `${f(t.macd, 2)} / ${f(t.macd_signal, 2)} / ${f(t.macd - t.macd_signal, 2)}`, t.macd > t.macd_signal ? "Bullish: above signal line" : "Bearish: below signal line", t.macd > t.macd_signal ? "up" : "dn");
   if (num(t.aroon)) add("Aroon oscillator (25)", f(t.aroon, 0), t.aroon > 50 ? "Bullish" : t.aroon < -50 ? "Bearish" : "Neutral", t.aroon > 50 ? "up" : t.aroon < -50 ? "dn" : "mid");
   if (num(t.hma20)) add("Hull average (20)", price(s, t.hma20), px > t.hma20 ? "Price above" : "Price below", px > t.hma20 ? "up" : "dn");
   if (num(t.sma20)) add("20-day average", price(s, t.sma20), px > t.sma20 ? "Price above" : "Price below", px > t.sma20 ? "up" : "dn");
   if (num(t.sma50)) add("50-day average", price(s, t.sma50), px > t.sma50 ? "Price above" : "Price below", px > t.sma50 ? "up" : "dn");
   if (num(t.sma200)) add("200-day average", price(s, t.sma200), px > t.sma200 ? "Price above" : "Price below", px > t.sma200 ? "up" : "dn");
   else add("200-day average", "n/a", "Needs about a year of history", "mid");
-  if (t.obv) add("On-balance volume", t.obv, t.obv === "Rising" ? "Accumulation" : t.obv === "Falling" ? "Distribution" : "Flat", t.obv === "Rising" ? "up" : t.obv === "Falling" ? "dn" : "mid");
-  if (num(t.cmf)) add("Chaikin money flow (20)", f(t.cmf, 2), t.cmf > 0.05 ? "Buying pressure" : t.cmf < -0.05 ? "Selling pressure" : "Neutral", t.cmf > 0.05 ? "up" : t.cmf < -0.05 ? "dn" : "mid");
   if (num(t.bb_up)) add("Bollinger bands (20, 2)", `${price(s, t.bb_lo)} to ${price(s, t.bb_up)}`, px > t.bb_up ? "Above upper band, stretched" : px < t.bb_lo ? "Below lower band, stretched" : "Inside the bands", "mid");
   if (num(t.atr)) add("ATR (14)", `${price(s, t.atr)} (${f(t.atr_pct, 1)}%)`, "Typical daily range", "mid");
-  if (num(s.price.vol_ratio)) add("Volume vs 20-day average", f(s.price.vol_ratio, 1) + "x", s.price.vol_ratio >= 1.5 ? "Heavy" : s.price.vol_ratio <= .6 ? "Light" : "Normal", "mid");
   return r.join("");
+}
+
+// ---------- 2. volume, money flow and options
+function volumeTable(s) {
+  const F = s.flow, v = F.volume_flow, vv = v.volume, px = s.price.last, u = unit(s);
+  const side = (x, a) => x == null ? "n/a" : px > x ? "price above" : "price below";
+  return kvt([
+    ["Prev session volume vs 20-day average", `${vol(vv.last)} vs ${vol(vv.avg20)}`, num(vv.ratio) ? `${f(vv.ratio, 2)}x: ${vv.ratio >= 1.5 ? "heavy" : vv.ratio <= .6 ? "light" : "normal"}` : "", vv.ratio >= 1.5 ? "up" : vv.ratio <= .6 ? "mid" : null],
+    ["On-balance volume (OBV)", v.obv || "n/a", v.obv === "Rising" ? "Accumulation" : v.obv === "Falling" ? "Distribution" : "Flat", v.obv === "Rising" ? "up" : v.obv === "Falling" ? "dn" : "mid"],
+    ["Chaikin money flow (20)", num(v.cmf) ? (v.cmf >= 0 ? "+" : "") + f(v.cmf, 2) : "n/a", v.cmf > .05 ? "Positive" : v.cmf < -.05 ? "Negative" : "Neutral", v.cmf > .05 ? "up" : v.cmf < -.05 ? "dn" : "mid"],
+    ["Money Flow Index (14)", num(v.mfi) ? f(v.mfi, 0) : "n/a", v.mfi >= 80 ? "Overbought" : v.mfi <= 20 ? "Oversold" : "Normal range", v.mfi >= 80 ? "dn" : v.mfi <= 20 ? "up" : "mid"],
+    ["Accumulation / distribution line", v.ad_trend, v.ad_trend === "Rising" ? "Buying pressure" : v.ad_trend === "Falling" ? "Selling pressure" : "Flat", v.ad_trend === "Rising" ? "up" : v.ad_trend === "Falling" ? "dn" : "mid"],
+    ["Up-day vs down-day volume (20d)", num(v.updown_ratio) ? f(v.updown_ratio, 2) + "x" : "n/a", v.updown_ratio >= 1.3 ? "Accumulation" : v.updown_ratio <= .77 ? "Distribution" : "Balanced", v.updown_ratio >= 1.3 ? "up" : v.updown_ratio <= .77 ? "dn" : "mid"],
+    ["Accumulation vs distribution days (25d)", `${v.acc_days} vs ${v.dist_days}`, v.acc_days - v.dist_days >= 3 ? "Institutional buying" : v.dist_days - v.acc_days >= 3 ? "Institutional selling" : "No clear lean", v.acc_days - v.dist_days >= 3 ? "up" : v.dist_days - v.acc_days >= 3 ? "dn" : "mid"],
+    v.big_days ? ["Sessions above 2x average volume (25d)", String(v.big_days), `${v.big_up} up, ${v.big_down} down`] : null,
+    num(v.vwap20) ? ["Volume-weighted price (20d / 50d)", `${price(s, v.vwap20)} / ${price(s, v.vwap50)}`, `${side(v.vwap20)} the 20d, ${side(v.vwap50)} the 50d`, px > v.vwap50 ? "up" : "dn"] : null,
+    v.profile ? ["Volume profile (6 months)", `POC ${price(s, v.profile.poc)}${u}`, `70% of volume between ${price(s, v.profile.va_low)} and ${price(s, v.profile.va_high)}`] : null,
+    v.support_node ? ["Nearest high-volume support", price(s, v.support_node.price) + u, "Price level where buyers have been active before"] : null,
+    v.resistance_node ? ["Nearest high-volume resistance", price(s, v.resistance_node.price) + u, "Price level where supply has been heavy before"] : null,
+  ]);
+}
+function offBlock(s) {
+  const o = s.flow.offexchange; if (!o) return "";
+  return `<h4>Off-exchange activity (dark pool proxy, FINRA) <span class="mut" style="text-transform:none">as of ${esc(o.asof)}</span></h4>` + kvt([
+    num(o.share) ? ["Off-exchange share of volume", p100(o.share), num(o.share_avg20) ? `20-day average ${p100(o.share_avg20)}` : "", o.share > (o.share_avg20 || 9) + .04 ? "up" : null] : null,
+    ["Off-exchange volume", vol(o.off_volume), o.otc ? "OTC venues report all volume off-exchange" : "Trades reported to the FINRA TRF (dark pools and broker internalisers)"],
+    ["Short-sale volume ratio", p100(o.short_ratio), num(o.short_ratio_avg20) ? `20-day average ${p100(o.short_ratio_avg20)}: ${o.tone === "up" ? "less shorting than usual" : o.tone === "dn" ? "more shorting than usual" : "in line"}` : "", o.tone],
+  ]) + `<div class="small mut">${o.notes.map(esc).join(" ")} FINRA publishes totals only, so true dark pool venues cannot be separated from internalisers, and short-sale volume is not short interest.</div>`;
+}
+function shortBlock(s) {
+  const F = s.flow, sh = F.short, uk = F.uk_short; let out = "";
+  if (sh) out += `<h4>Short interest${sh.adr ? ` <span class="mut" style="text-transform:none">(US ADR ${esc(sh.adr)} only, not the local listing)</span>` : ""}</h4>` + kvt([
+    ["Shares short", vol(sh.shares), `settled ${esc(sh.date)}`],
+    ["Days to cover", f(sh.days_to_cover, 1), sh.days_to_cover >= 5 ? "High: crowded short" : sh.days_to_cover >= 3 ? "Moderate" : "Low", sh.days_to_cover >= 5 ? "dn" : null],
+    ["Change vs previous settlement", pc(sh.change_pct, 1), sh.tone === "up" ? "Shorts are covering" : sh.tone === "dn" && sh.change_pct > 8 ? "Shorting is building" : ""],
+    num(sh.pct_of_shares) ? ["Approx. % of shares outstanding", f(sh.pct_of_shares, 2) + "%", "Shares outstanding estimated from market cap / price (not the free float)"] : null,
+  ]);
+  if (uk) out += `<h4>UK net short positions (FCA register)</h4>` + (uk.holders ? kvt([["Disclosed net short (sum of holders)", f(uk.total_pct, 2) + "%", `${uk.holders} holder(s) above the 0.5% threshold${uk.date ? ", latest " + esc(String(uk.date).slice(0, 10)) : ""}`, uk.total_pct >= 3 ? "dn" : null]]) : '<div class="small mut">No holder is currently above the 0.5% disclosure threshold.</div>');
+  const ins = F.insiders;
+  if (ins) out += `<h4>Insider activity (last ${ins.days} days, SEC filings)</h4>` + (ins.buys + ins.sells ? kvt([["Open-market buys / sells", `${ins.buys} / ${ins.sells}`, `bought ${usd(ins.buy_value)}, sold ${usd(ins.sell_value)}`, ins.tone]]) + `<div class="small mut">${ins.recent.map(r => `${esc(r.date)} ${esc(r.role)} ${esc(r.type.toLowerCase())} ${vol(r.shares)} sh`).join(" · ")}. Sales are often pre-planned (10b5-1) or tax related: weak signal.</div>` : '<div class="small mut">No open-market insider buys or sells in the period.</div>');
+  return out;
+}
+function optionsBlock(s) {
+  const o = s.flow.options; if (!o) return "";
+  const rk = o.iv_rank, ivr = !rk ? "n/a" : rk.status === "ok" ? `${f(rk.rank, 0)} (percentile ${f(rk.percentile, 0)})` : `building history ${rk.days}/${rk.need} days`;
+  const rich = num(o.iv_vs_hv) ? (o.iv_vs_hv >= 1.3 ? "Options rich: pricing more movement than realised" : o.iv_vs_hv <= .9 ? "Options cheap vs realised volatility" : "Fairly priced vs realised volatility") : "";
+  const src = o.proxy ? ` via the US-listed ADR ${esc(o.symbol)}` : "";
+  return `<h4>Options flow detail${src} <span class="mut" style="text-transform:none">${esc(o.as_of || "")}</span></h4>` + kvt([
+    ["Put/call ratio (volume)", num(o.pc_volume) ? f(o.pc_volume, 2) : "n/a", `${vol(o.call_volume)} calls vs ${vol(o.put_volume)} puts`, o.pc_volume < .7 ? "up" : o.pc_volume > 1 ? "dn" : "mid"],
+    ["Put/call ratio (open interest)", num(o.pc_oi) ? f(o.pc_oi, 2) : "n/a", `${vol(o.call_oi)} calls vs ${vol(o.put_oi)} puts`],
+    ["Call share of premium traded", num(o.call_premium_share) ? p100(o.call_premium_share) : "n/a", `calls ${usd(o.call_premium)} vs puts ${usd(o.put_premium)}`, o.call_premium_share > .6 ? "up" : o.call_premium_share < .4 ? "dn" : "mid"],
+    num(o.iv) ? ["Implied volatility (~30 days)", f(o.iv * 100, 1) + "%", `expiry ${esc(o.iv_expiry)} (${o.iv_dte} d)`] : null,
+    num(o.iv_vs_hv) ? ["IV vs 20-day realised volatility", f(o.iv_vs_hv, 2) + "x", rich] : null,
+    ["IV rank", ivr, rk && rk.status === "ok" ? (rk.rank >= 70 ? "Expensive" : rk.rank <= 30 ? "Cheap" : "Fair") : "Needs 20 days of readings (one per day the build runs)"],
+    num(o.expected_move_pct) ? ["Expected move to expiry", "±" + f(o.expected_move_pct, 1) + "%", "From at-the-money implied volatility, about 1 standard deviation"] : null,
+    num(o.skew_pts) ? ["Skew (25-delta put minus call IV)", (o.skew_pts >= 0 ? "+" : "") + f(o.skew_pts, 1) + " pts", o.skew_pts > 5 ? "Demand for downside protection" : o.skew_pts < 0 ? "Call skew: upside chasing" : "Normal", o.skew_pts > 5 ? "dn" : o.skew_pts < 0 ? "up" : "mid"] : null,
+    o.max_pain != null ? ["Max pain / call wall / put wall", `${f(o.max_pain, 2)} / ${o.call_wall != null ? f(o.call_wall, 2) : "n/a"} / ${o.put_wall != null ? f(o.put_wall, 2) : "n/a"}`, `expiry ${esc(o.pain_expiry)}${o.proxy ? ", ADR dollars" : ""}`] : null,
+    ["Net options sentiment", `<span class="badge ${tcls(o.tone)}">${esc(o.label)}</span>`, o.notes.map(esc).join(" ")],
+  ]) + (o.unusual.length ? `<h4>Unusual activity (volume at least 2x open interest)</h4><div class="tw"><table><tr><th>Contract</th><th class="n">Volume</th><th class="n">Open int.</th><th class="n">Premium</th></tr>${o.unusual.map(u => `<tr><td>${esc(u.exp.slice(5))} ${u.type} ${f(u.strike, 2)}</td><td class="n">${vol(u.volume)}</td><td class="n">${vol(u.oi)}</td><td class="n">${usd(u.premium)}</td></tr>`).join("")}</table></div>` : "");
+}
+function flowSection(s) {
+  const F = s.flow;
+  if (!F) return `<div class="note">Money-flow data unavailable.</div>`;
+  return volumeTable(s) + offBlock(s) + shortBlock(s) + optionsBlock(s) +
+    (F.gaps.length ? `<div class="small mut" style="margin-top:8px"><b>Not available for this stock:</b> ${F.gaps.map(esc).join(" ")}</div>` : "") +
+    `<div class="verdict ${F.overall.tone}"><div>💰 <b>Money flow verdict</b> <span class="badge ${tcls(F.overall.tone)}">${esc(F.overall.label)}</span></div><div>${esc(F.text)}</div>
+     <ul class="small">${F.verdict.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
+}
+
+// ---------- 3. price prediction and range
+function rangeSection(s) {
+  const p = s.pivots, t = s.tech, r = s.range, F = s.flow, o = F && F.options, v = F && F.volume_flow, u = unit(s);
+  const lv = [["R3", p.r3, num(t.keltner_up) ? "Pivot extreme; upper Keltner channel " + price(s, t.keltner_up) : "Pivot extreme"], ["R2", p.r2, ""], ["R1", p.r1, "Near-term resistance"], ["Pivot", p.p, "Classic daily pivot"], ["S1", p.s1, "Near-term support"], ["S2", p.s2, ""], ["S3", p.s3, num(t.keltner_lo) ? "Pivot extreme; lower Keltner channel " + price(s, t.keltner_lo) : "Pivot extreme"]];
+  const px = s.price.last;
+  const key = [[t.sma50, "50-day average"], [t.sma200, "200-day average"], [t.hi20, "20-day high"], [t.lo20, "20-day low"], [s.price.hi52, "52-week high"], [s.price.lo52, "52-week low"],
+    [v && v.support_node && v.support_node.price, "High-volume support"], [v && v.resistance_node && v.resistance_node.price, "High-volume resistance"], [o && o.call_wall, "Options call wall"], [o && o.put_wall, "Options put wall"]]
+    .filter(x => num(x[0]) && !(x[1].startsWith("Options") && o.proxy)).sort((a, b) => b[0] - a[0]);
+  return `<div class="grid"><div><h4>Pivot levels</h4><div class="tw"><table><tr><th>Level</th><th class="n">Price</th><th>Notes</th></tr>${lv.map(x => `<tr><td>${x[0]}</td><td class="n">${price(s, x[1])}${u}</td><td class="small mut">${x[2]}</td></tr>`).join("")}</table></div></div>
+    <div><h4>Predicted next-session range</h4>${r ? kvt([["Typical range (ATR based)", `${price(s, r.atr_lo)} to ${price(s, r.atr_hi)}`, "last close ± 0.6 × 14-day ATR"], ["Pivot band", `${price(s, r.pivot_lo)} to ${price(s, r.pivot_hi)}`, "S1 to R1"], r.iv_lo ? ["Options-implied 1-day move", `${price(s, r.iv_lo)} to ${price(s, r.iv_hi)}`, "1 standard deviation from implied volatility"] : null]) : '<div class="mut small">n/a</div>'}
+    <h4>Key levels</h4><div class="tw"><table>${key.map(k => `<tr><td>${k[1]}</td><td class="n">${f(k[0], k[0] < 10 ? 3 : 2)}</td><td class="n ${k[0] > px ? "dn" : "up"} small">${k[0] > px ? "above" : "below"} price ${f(Math.abs(k[0] / px - 1) * 100, 1)}%</td></tr>`).join("")}</table></div>
+    <div class="small" style="margin-top:6px"><b>Directional bias:</b> <span class="badge ${biasCls(s.bias)}">${esc(s.lean)}</span> · <b>Confidence:</b> ${s.confidence}</div></div></div>
+    <div class="small mut">These are statistical estimates from volatility and volume, not forecasts.</div>`;
+}
+
+// ---------- 4. catalyst matrix
+function catalystBlock(s) {
+  const n = s.news, items = n && n.items ? n.items : [];
+  const grp = (tone, label, cls) => { const x = items.filter(i => i.tone === tone).slice(0, 4); return x.length ? `<div style="margin-bottom:6px"><span class="${cls}"><b>${label}</b></span><ul class="clean small">${x.map(i => `<li><a href="${url(i.link)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a> <span class="mut">(${esc(i.source)}${i.time ? ", " + esc(i.time.slice(0, 10)) : ""})</span></li>`).join("")}</ul></div>` : ""; };
+  const ev = (s.events || []).length ? `<div style="margin-bottom:6px"><b>Scheduled</b><ul class="clean small">${s.events.map(e => `<li><b>${esc(e.date)}</b> ${e.days === 0 ? "(today)" : `(in ${e.days} d)`} ${esc(e.title)}${e.approx ? " ~" : ""} <span class="mut">${esc(e.why || e.detail || "")}</span></li>`).join("")}</ul></div>` : "";
+  return `<div class="small mut" style="margin-bottom:6px">${esc(n ? n.summary : "")}</div>${grp("pos", "🟢 Bullish", "up")}${grp("neg", "🔴 Bearish", "dn")}${grp("neu", "⚪ Neutral", "mut")}${ev}${!items.length && !ev ? '<div class="mut small">No catalysts found.</div>' : ""}`;
+}
+
+// ---------- 5. cross-asset and sector context
+function contextBlock(s) {
+  const c = s.context; if (!c) return "";
+  const row = (label, q, extra) => q ? `<tr><td>${label}</td><td>${esc(q.name && q.name !== q.symbol ? q.name + " (" + q.symbol + ")" : q.symbol)}</td><td class="n">${f(q.price, q.price < 10 ? 4 : 2)}</td><td class="n">${pc(q.chg_pct)}</td><td class="n">${pc(q.ret_1m, 1)}</td><td class="small">${extra || ""}</td></tr>` : "";
+  const e = c.etf;
+  return `<div class="tw"><table><tr><th></th><th>Instrument</th><th class="n">Price</th><th class="n">Day</th><th class="n">1M</th><th>Relation</th></tr>
+    ${row("Sector ETF", e, e && num(e.rel_1m) ? `stock ${e.rel_1m >= 0 ? "ahead" : "behind"} by ${f(Math.abs(e.rel_1m), 1)} pts (1M)${num(e.corr_60d) ? `, 60d correlation ${f(e.corr_60d, 2)}` : ""}` : "")}
+    ${c.peers.map(p => row("Peer", p, num(s.returns["1m"]) && num(p.ret_1m) ? `stock ${s.returns["1m"] >= p.ret_1m ? "ahead" : "behind"} by ${f(Math.abs(s.returns["1m"] - p.ret_1m), 1)} pts` : "")).join("")}
+    ${row("Local index", c.index, c.index && num(c.index.rel_1m) ? `stock ${c.index.rel_1m >= 0 ? "ahead" : "behind"} by ${f(Math.abs(c.index.rel_1m), 1)} pts (1M)` : "")}
+    ${row("FX to EUR", c.fx, c.fx ? "A rising rate lifts the euro value of this stock's local-currency price" : "")}</table></div>
+    ${c.text ? `<div class="small" style="margin-top:6px">${esc(c.text)}</div>` : ""}<div class="small mut">ETFs and peers are US-listed proxies chosen for sector exposure; they are not perfect matches.</div>`;
+}
+
+// ---------- 6. risk and 7. recommendation
+function riskBlock(s) {
+  return `<div class="tw"><table><tr><th></th><th>Risk factor</th><th>Detail</th></tr>${(s.risk || []).map(r => `<tr><td>${dot[r.level]}</td><td>${esc(r.factor)}</td><td class="small">${esc(r.detail)}</td></tr>`).join("")}</table></div>`;
+}
+function recoBlock(s) {
+  const l = s.levels, u = unit(s);
+  const lines = [["Bias", `<span class="badge ${biasCls(s.bias)}">${esc(s.lean)}</span>`]];
+  if (l && l.entry_lo != null) lines.push(["Entry zone", `${price(s, Math.min(l.entry_lo, l.entry_hi))}${u} to ${price(s, Math.max(l.entry_lo, l.entry_hi))}${u}`], ["Target", price(s, l.target) + u], ["Stop loss", price(s, l.stop) + u], ["Risk / reward", num(l.rr) ? "~" + f(l.rr, 1) + " : 1" : "n/a"]);
+  else if (l) lines.push(["Support / resistance", `${price(s, l.support)}${u} / ${price(s, l.resistance)}${u}`], ["Entry zone", "Wait for confirmation: a close above resistance or a bounce from support with rising volume"]);
+  lines.push(["Time horizon", esc(s.horizon || "n/a")]);
+  return `<div class="tw"><table class="kv">${lines.map(r => `<tr><td>${r[0]}</td><td colspan="2">${r[1]}</td></tr>`).join("")}</table></div>
+    ${l && l.entry_lo != null ? '<div class="small mut">Mechanical: entry is a pullback band under the last close, target 2x and stop 1.5x the 14-day average true range (target snapped to a pivot when one sits inside the move). A bearish bias shows the mirror image for reference; it is not a short recommendation.</div>' : ""}`;
 }
 function regimeBlock(s) {
   const r = s.regime;
@@ -138,26 +265,6 @@ function regimeBlock(s) {
     <div><h4>Transition matrix (row = today, column = next session)</h4><div class="tw"><table><tr><th></th><th class="n">Bear</th><th class="n">Side.</th><th class="n">Bull</th></tr>${tm}</table></div></div></div>
     <h4>Regime moments (daily returns while in each regime)</h4><div class="tw"><table><tr><th></th><th class="n">Mean/day</th><th class="n">Volatility (ann.)</th><th class="n">Skew</th><th class="n">Ex. kurtosis</th></tr>${mo}</table></div>${wf}`;
 }
-function levelsBlock(s) {
-  const l = s.levels, u = unit(s);
-  if (!l) return '<div class="note">No levels: volatility data unavailable.</div>';
-  if (l.bias === "Neutral") return `<table><tr><td>Bias</td><td><span class="badge b-mid">Neutral, wait for confirmation</span></td></tr><tr><td>Support (S1)</td><td class="n">${price(s, l.support)}${u}</td></tr><tr><td>Resistance (R1)</td><td class="n">${price(s, l.resistance)}${u}</td></tr></table>`;
-  return `<table><tr><td>Bias</td><td><span class="badge ${biasCls(l.bias)}">${l.bias}</span></td></tr>
-    <tr><td>Entry zone</td><td class="n">${price(s, Math.min(l.entry_lo, l.entry_hi))}${u} to ${price(s, Math.max(l.entry_lo, l.entry_hi))}${u}</td></tr>
-    <tr><td>Target</td><td class="n">${price(s, l.target)}${u}</td></tr><tr><td>Stop</td><td class="n">${price(s, l.stop)}${u}</td></tr>
-    <tr><td>Reward / risk</td><td class="n">${num(l.rr) ? f(l.rr, 1) + " : 1" : "n/a"}</td></tr>
-    <tr><td>Support / resistance</td><td class="n">${price(s, l.support)}${u} / ${price(s, l.resistance)}${u}</td></tr></table>
-    <div class="small mut">Mechanical: entry is a pullback band under the last close, target 2x and stop 1.5x the 14-day average true range (target snapped to a pivot level when one sits inside the move). A bearish bias shows the mirror image for reference; it is not a short recommendation.</div>`;
-}
-function newsBlock(s) {
-  const n = s.news; if (!n || !n.items.length) return '<div class="mut">No headlines right now.</div>';
-  const t = {pos: "🟢", neg: "🔴", neu: "⚪"};
-  return `<div class="small mut" style="margin-bottom:6px">${esc(n.summary)}</div><ul class="clean">${n.items.slice(0, 8).map(i => `<li>${t[i.tone] || "⚪"} <a href="${url(i.link)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a> <span class="mut small">${esc(i.source)}${i.time ? " · " + esc(i.time.slice(0, 10)) : ""}</span></li>`).join("")}</ul>`;
-}
-function eventsBlock(s) {
-  if (!s.events || !s.events.length) return '<div class="mut small">No dated events in the next months.</div>';
-  return `<ul class="clean">${s.events.map(e => `<li><b>${esc(e.date)}</b> ${e.days >= 0 ? `<span class="${e.days <= 7 ? "dn" : "mut"} small">(${e.days === 0 ? "today" : "in " + e.days + " d"})</span>` : ""} ${esc(e.title)}${e.approx ? " ~" : ""} <span class="mut small">${esc(e.detail)}</span></li>`).join("")}</ul>`;
-}
 function thesis(s) {
   const c = s.confluence, r = s.regime, parts = [];
   parts.push(`${c.passed} of ${c.available} bullish checks pass (score ${c.score}/10)`);
@@ -170,56 +277,77 @@ function thesis(s) {
 }
 function stockCard(s) {
   const head = `<summary><span class="sum-name">${esc(s.name)}</span><span class="mut small">${esc(s.ticker)} · ${esc(s.sector)}</span>
-    ${s.status === "ok" ? `<span class="badge ${biasCls(s.bias)}">${s.bias}</span><span class="mut small">${s.confluence.score}/10 · ${s.confidence} confidence</span>
+    ${s.status === "ok" ? `<span class="badge ${biasCls(s.bias)}">${esc(s.lean)}</span><span class="mut small">${s.confluence.score}/10 · ${s.confidence} conf.</span>${s.flow ? `<span class="badge ${tcls(s.flow.overall.tone)}" title="Money flow">${s.flow.overall.tone === "up" ? "Inflow" : s.flow.overall.tone === "dn" ? "Outflow" : "Flow mixed"}</span>` : ""}
     <span class="sum-px"><b>${price(s, s.price.last)}${unit(s)} ${esc(s.currency === "GBp" ? "GBX" : s.currency)}</b> ${pc(s.price.chg_pct)}</span>` : '<span class="warn small">no price data</span>'}</summary>`;
-  if (s.status !== "ok") return `<details class="stock" id="t-${esc(ticker(s))}">${head}<div class="body"><div class="note">${esc(s.note || "Prices could not be fetched on the last update.")}</div><h4>News</h4>${newsBlock(s)}</div></details>`;
-  const p = s.price, w = s.weekly;
+  if (s.status !== "ok") return `<details class="stock" id="t-${esc(ticker(s))}">${head}<div class="body"><div class="note">${esc(s.note || "Prices could not be fetched on the last update.")}</div>${sec(4, "Catalyst matrix")}${catalystBlock(s)}</div></details>`;
+  const p = s.price, w = s.weekly, id = s.identity;
   const checks = s.confluence.checks.map(c => `<li>${c.pass === null ? "➖" : c.pass ? "✅" : "❌"} ${esc(c.label)}</li>`).join("");
+  const reds = (s.risk || []).filter(r => r.level === "red").length, ambers = (s.risk || []).filter(r => r.level === "amber").length;
   return `<details class="stock" id="t-${esc(ticker(s))}">${head}<div class="body">
     ${s.note ? `<div class="note" style="margin-bottom:10px">${esc(s.note)}</div>` : ""}
-    <div class="tiles"><div class="tile"><span class="mut small">Last close</span><b>${price(s, p.last)}${unit(s)}</b>${pc(p.chg_pct)}</div>
+    <div class="bottom"><div><b>Bottom line.</b> ${esc(thesis(s))}</div>${s.flow ? `<div style="margin-top:4px">${esc(s.flow.text)}</div>` : ""}
+      <div class="small mut" style="margin-top:4px">Risk: ${reds ? `🔴 ${reds} high ` : ""}${ambers ? `🟡 ${ambers} medium ` : ""}${!reds && !ambers ? "🟢 low " : ""}· Horizon: ${esc(s.horizon || "n/a")}</div></div>
+    ${sec(0, "Stock identity")}
+    <div class="tiles"><div class="tile"><span class="mut small">Last close</span><b>${price(s, p.last)}${unit(s)}</b>${pc(p.chg_pct)} <span class="mut small">prev ${price(s, p.prev)}</span></div>
       <div class="tile"><span class="mut small">Day range</span><b>${price(s, p.day_low)} to ${price(s, p.day_high)}</b></div>
       <div class="tile"><span class="mut small">52 week range</span><b>${price(s, p.lo52)} to ${price(s, p.hi52)}</b>${pc(p.from_hi52_pct, 1)} from high</div>
       <div class="tile"><span class="mut small">1M / 3M / YTD</span><b style="font-size:14px">${pc(s.returns["1m"], 1)} ${pc(s.returns["3m"], 1)} ${pc(s.returns.ytd, 1)}</b></div>
       <div class="tile"><span class="mut small">12-1 momentum</span><b>${num(s.returns.mom_12_1) ? pc(s.returns.mom_12_1, 1) : "n/a"}</b></div>
       <div class="tile"><span class="mut small">Volatility (ann.)</span><b>${f(s.tech.vol_ann, 0)}%</b></div></div>
-    <h4>Price</h4>${lineChart(s.chart)}
-    <div class="grid"><div><h4>Technical snapshot (daily)</h4><div class="tw"><table><tr><th>Indicator</th><th class="n">Value</th><th>Signal</th></tr>${rows(s)}</table></div>
-      ${w ? `<div class="small" style="margin-top:8px"><b>Weekly overlay:</b> ${esc(w.trend)}, weekly RSI ${f(w.rsi, 0)}. ${w.aligned ? "Daily and weekly agree ✅" : "Daily and weekly disagree ⚠️"}</div>` : ""}</div>
-      <div><h4>Confluence score ${s.confluence.score}/10</h4><ul class="clean small">${checks}</ul>
+    <div class="small" style="margin-top:8px"><b>${esc(s.ticker)}</b> · ${esc(id.exchange)} · ${esc(id.sector)} · ${esc(id.currency)} · Market cap ${id.market_cap ? esc(id.market_cap) : "n/a"} · ${esc(id.status)}</div>
+    ${lineChart(s.chart)}
+    ${sec(1, "Technical snapshot", "(daily)")}
+    <div class="grid"><div><div class="tw"><table><tr><th>Indicator</th><th class="n">Value</th><th>Signal</th></tr>${rows(s)}</table></div>
+      ${w ? `<div class="small" style="margin-top:8px"><b>Weekly timeframe overlay:</b> weekly RSI ${f(w.rsi, 0)}, price ${s.price.last > w.ema20 ? "above" : "below"} the weekly 20 EMA (${price(s, w.ema20)}), weekly trend ${esc(w.trend.toLowerCase())}. ${w.aligned ? "Daily and weekly agree ✅" : "Daily and weekly disagree ⚠️"}</div>` : ""}</div>
+      <div><h4 style="margin-top:0">Confluence score ${s.confluence.score}/10 · ${s.confidence} conviction</h4><ul class="clean small">${checks}</ul>
       ${(s.signals || []).length ? `<h4>Signals</h4>${s.signals.map(g => `<div class="small"><span class="${g.tone === "bull" ? "up" : g.tone === "bear" ? "dn" : "warn"}">●</span> <b>${esc(g.label)}</b> <span class="mut">${esc(g.detail)}</span></div>`).join("")}` : ""}</div></div>
-    <h4>Pivot levels (classic, from the last session)</h4><div class="tw"><table><tr>${["s3", "s2", "s1", "p", "r1", "r2", "r3"].map(k => `<th class="n">${k.toUpperCase()}</th>`).join("")}</tr><tr>${["s3", "s2", "s1", "p", "r1", "r2", "r3"].map(k => `<td class="n">${price(s, s.pivots[k])}</td>`).join("")}</tr></table></div>
-    <div class="grid"><div><h4>Price levels</h4>${levelsBlock(s)}</div><div><h4>Upcoming events</h4>${eventsBlock(s)}</div></div>
     <h4>Market regime (hidden Markov model)</h4>${regimeBlock(s)}
-    <h4>News and catalysts</h4>${newsBlock(s)}
+    ${sec(2, "Volume, money flow and options")}${flowSection(s)}
+    ${sec(3, "Price prediction and range forecast")}${rangeSection(s)}
+    ${sec(4, "Catalyst matrix", "(last 7 days and scheduled)")}${catalystBlock(s)}
+    ${sec(5, "Cross-asset and sector context")}${contextBlock(s)}
+    ${sec(6, "Risk assessment")}${riskBlock(s)}
+    ${sec(7, "Impact insight and recommendation")}${recoBlock(s)}
     <div class="small mut" style="margin-top:10px">Data: ${esc(s.source)}${s.via === "proxy" ? " via proxy" : ""}, ${s.bars} daily sessions, last bar ${esc(new Date(p.asof * 1000).toISOString().slice(0, 10))}.</div>
   </div></details>`;
 }
 
-// ---------- sections
+// ---------- page sections
 function ideas(stocks) {
   const ok = stocks.filter(s => s.status === "ok");
   const bull = ok.filter(s => s.bias === "Bullish").sort((a, b) => b.confluence.score - a.confluence.score || (b.regime?.probs.bull ?? 0) - (a.regime?.probs.bull ?? 0)).slice(0, 3);
   if (!bull.length) {
     const best = ok.slice().sort((a, b) => b.confluence.score - a.confluence.score).slice(0, 3);
-    $("ideasBox").innerHTML = `<div class="card" style="grid-column:1/-1"><b>No stock passes the bullish threshold (7 of 10 checks) today.</b><div class="small mut">Closest: ${best.map(s => `<a href="#t-${esc(ticker(s))}">${esc(s.name)}</a> (${s.confluence.score}/10)`).join(", ")}. Patience is a position.</div></div>`;
+    $("ideasBox").innerHTML = `<div class="card" style="grid-column:1/-1"><b>No stock passes the bullish threshold (7 of 10 checks) today.</b><div class="small mut">Closest: ${best.map(s => `<a href="#t-${esc(ticker(s))}" data-open="${esc(ticker(s))}">${esc(s.name)}</a> (${s.confluence.score}/10)`).join(", ")}. Patience is a position.</div></div>`;
     return;
   }
   $("ideasBox").innerHTML = bull.map((s, i) => `<div class="card idea"><div><b>#${i + 1} <a href="#t-${esc(ticker(s))}" data-open="${esc(ticker(s))}">${esc(s.name)}</a></b> <span class="mut small">${esc(s.ticker)}</span></div>
-    <div style="margin:4px 0"><span class="badge b-up">Bullish</span> <span class="mut small">${s.confluence.score}/10 · ${s.confidence} confidence</span></div>
+    <div style="margin:4px 0"><span class="badge b-up">Bullish</span> <span class="mut small">${s.confluence.score}/10 · ${s.confidence} confidence</span> ${s.flow ? `<span class="badge ${tcls(s.flow.overall.tone)}">${esc(s.flow.overall.label)}</span>` : ""}</div>
     <div class="small">${esc(thesis(s))}</div>${s.levels && s.levels.entry_lo ? `<div class="small mut" style="margin-top:6px">Entry ${price(s, Math.min(s.levels.entry_lo, s.levels.entry_hi))}-${price(s, Math.max(s.levels.entry_lo, s.levels.entry_hi))} · Target ${price(s, s.levels.target)} · Stop ${price(s, s.levels.stop)} · R/R ${f(s.levels.rr, 1)}</div>` : ""}</div>`).join("");
+}
+function universeBlock(u) {
+  if (!u) return "";
+  const rk = u.macro_risk, mix = Object.entries(u.currency_mix).map(([k, v]) => `${k}: ${v}`).join(" · ");
+  return `<div class="card"><h3>Risk dashboard across the ten stocks <span class="mut small">(equal weight, no holdings)</span></h3><div class="tw"><table>
+    <tr><td>Average beta vs ${esc(u.bench)}</td><td class="n">${num(u.avg_beta) ? f(u.avg_beta, 2) : "n/a"}</td><td class="small mut">1 year of daily returns on shared trading days. Non-US stocks trade at different hours, which lowers measured beta.</td></tr>
+    <tr><td>Earnings in the next 7 days</td><td class="n">${u.earnings_7d.length ? u.earnings_7d.map(e => `<span class="dn">${esc(e.ticker.split(":").pop())} ${esc(e.date.slice(5))}</span>`).join(", ") : "None"}</td><td class="small mut">${u.earnings_7d.length ? "Binary event risk" : ""}</td></tr>
+    <tr><td>Currency mix</td><td class="n">${esc(mix)}</td><td class="small mut">${Object.keys(u.currency_mix).length > 1 ? "Mixed currencies: translation risk for a single-currency investor" : ""}</td></tr>
+    <tr><td>Most correlated pairs (90d)</td><td class="n">${u.high_corr.length ? u.high_corr.map(x => `${esc(x.a)}↔${esc(x.b)} ${f(x.corr, 2)}`).join("<br>") : "None above 0.6"}</td><td class="small mut">${u.high_corr.length ? "These move together: crowded exposure" : "Good diversification across the list"}</td></tr>
+    <tr><td>Least correlated pairs</td><td class="n">${u.lowest_corr.map(x => `${esc(x.a)}↔${esc(x.b)} ${f(x.corr, 2)}`).join("<br>") || "n/a"}</td><td></td></tr>
+    <tr><td>Macro override risk</td><td class="n">${dot[rk.level]} ${rk.level === "red" ? "High" : rk.level === "amber" ? "Medium" : "Low"}</td><td class="small mut">${esc(rk.detail)}</td></tr></table></div></div>`;
 }
 function marketSection(m) {
   if (!m) { $("marketBox").innerHTML = '<div class="note err">Market data unavailable.</div>'; return; }
   const q = m.quotes.filter(x => num(x.price));
   const tiles = q.map(x => `<div class="tile"><span class="mut small">${esc(x.name)}</span><b>${f(x.price, x.price < 10 ? 4 : 2)}</b>${pc(x.chg_pct)} <span style="float:right">${spark(x.spark, (x.chg_pct ?? 0) >= 0)}</span></div>`).join("");
   const trend = q.filter(x => x.trend).map(x => `<tr><td>${esc(x.name)}</td><td class="n">${pc(x.ret_1m, 1)}</td><td class="n">${pc(x.ret_3m, 1)}</td><td class="n">${pc(x.ret_ytd, 1)}</td><td class="n">${num(x.rsi) ? f(x.rsi, 0) : "n/a"}</td><td class="${x.trend === "Uptrend" ? "up" : x.trend === "Downtrend" ? "dn" : "warn"}">${esc(x.trend)}</td></tr>`).join("");
-  const b = m.breadth, tot = Math.max(b.n, 1);
+  const b = m.breadth, tot = Math.max(b.n, 1), reg = b.regimes, fl = b.flow || {up: 0, mid: 0, dn: 0};
   const bb = `<div class="bar"><i style="width:${b.bullish / tot * 100}%;background:var(--up)"></i><i style="width:${b.neutral / tot * 100}%;background:var(--warn)"></i><i style="width:${b.bearish / tot * 100}%;background:var(--dn)"></i></div><div class="small mut" style="display:flex;justify-content:space-between"><span class="up">${b.bullish} bullish</span><span class="warn">${b.neutral} neutral</span><span class="dn">${b.bearish} bearish</span></div>`;
-  const reg = b.regimes;
-  $("marketBox").innerHTML = `${q.length ? `<div class="tiles">${tiles}</div>` : '<div class="note err">Index quotes could not be fetched on the last update.</div>'}
+  $("marketBox").innerHTML = `<div class="card"><h3>Global macro preamble</h3><table class="kv">${(m.preamble || []).map(p => `<tr><td style="white-space:nowrap"><b>${esc(p.label)}</b></td><td class="small">${esc(p.text)}</td></tr>`).join("")}</table></div>
+    ${q.length ? `<div class="tiles">${tiles}</div>` : '<div class="note err">Index quotes could not be fetched on the last update.</div>'}
     <div class="grid" style="margin-top:12px"><div class="card"><h3>Read of the market</h3><ul class="clean small">${m.read.map(x => `<li>${esc(x)}</li>`).join("") || '<li class="mut">Not enough data.</li>'}</ul></div>
-    <div class="card"><h3>Breadth across the ten stocks</h3>${bb}<div class="small mut" style="margin-top:8px">Regimes: ${reg.bull} bull, ${reg.sideways} sideways, ${reg.bear} bear. Above 50-day: ${b.above_50}/${b.n}${b.have_200 ? `, above 200-day: ${b.above_200}/${b.have_200}` : ""}. Average confluence ${num(b.avg_confluence) ? f(b.avg_confluence, 1) : "n/a"}/10.</div></div></div>
+    <div class="card"><h3>Breadth across the ten stocks</h3>${bb}<div class="small mut" style="margin-top:8px">Regimes: ${reg.bull} bull, ${reg.sideways} sideways, ${reg.bear} bear. Money flow: ${fl.up} inflow, ${fl.mid} mixed, ${fl.dn} outflow. Above 50-day: ${b.above_50}/${b.n}${b.have_200 ? `, above 200-day: ${b.above_200}/${b.have_200}` : ""}. Average confluence ${num(b.avg_confluence) ? f(b.avg_confluence, 1) : "n/a"}/10.</div></div></div>
+    ${universeBlock(m.universe)}
     ${trend ? `<div class="card tw"><h3>Trend table</h3><table><tr><th>Market</th><th class="n">1M</th><th class="n">3M</th><th class="n">YTD</th><th class="n">RSI</th><th>Trend</th></tr>${trend}</table></div>` : ""}
     <div class="grid"><div class="card"><h3>What is driving headlines</h3>${m.drivers.map(d => `<div style="margin-bottom:8px"><b>${esc(d.theme)}</b> <span class="mut small">(${d.count})</span><ul class="clean small">${d.headlines.map(h => `<li><a href="${url(h.link)}" target="_blank" rel="noopener noreferrer">${esc(h.title)}</a> <span class="mut">${esc(h.source)}</span></li>`).join("")}</ul></div>`).join("") || '<span class="mut">None</span>'}</div>
     <div class="card"><h3>Central banks</h3><ul class="clean small">${(m.central_banks || []).slice(0, 8).map(h => `<li><b>${esc(h.bank)}</b>: <a href="${url(h.link)}" target="_blank" rel="noopener noreferrer">${esc(h.title)}</a> <span class="mut">${esc((h.time || "").slice(0, 10))}</span></li>`).join("") || '<li class="mut">None</li>'}</ul>
@@ -229,36 +357,38 @@ function heat(stocks) {
   const ok = stocks.filter(s => s.status === "ok").sort((a, b) => b.confluence.score - a.confluence.score || (b.regime?.probs.bull ?? 0) - (a.regime?.probs.bull ?? 0));
   const bad = stocks.filter(s => s.status !== "ok");
   const shade = sc => `color-mix(in srgb, ${sc >= 7 ? "var(--up)" : sc <= 3 ? "var(--dn)" : "var(--warn)"} 14%, transparent)`;
-  $("heatBox").innerHTML = `<table><tr><th>#</th><th>Stock</th><th class="n">Last</th><th class="n">Day</th><th class="n">1M</th><th>Bias</th><th class="n">Score</th><th>Regime</th><th>Conf.</th><th>Next event</th></tr>
-  ${ok.map((s, i) => { const ev = (s.events || [])[0]; return `<tr style="background:${shade(s.confluence.score)}"><td>${i + 1}</td><td><a href="#t-${esc(ticker(s))}" data-open="${esc(ticker(s))}"><b>${esc(ticker(s))}</b></a> <span class="mut small">${esc(s.name)}</span></td>
-  <td class="n">${price(s, s.price.last)}${unit(s)}</td><td class="n">${pc(s.price.chg_pct)}</td><td class="n">${pc(s.returns["1m"], 1)}</td><td><span class="badge ${biasCls(s.bias)}">${s.bias}</span></td><td class="n">${s.confluence.score}/10</td>
-  <td>${s.regime ? `<span style="color:${regCol[s.regime.current]}">${regName[s.regime.current]}</span> <span class="mut small">${p100(s.regime.probs[s.regime.current])}</span>` : '<span class="mut">n/a</span>'}</td><td>${s.confidence}</td>
-  <td class="small">${ev ? esc(ev.date.slice(5)) + " " + esc(ev.title.replace(/^\S+ /, "")) : '<span class="mut">-</span>'}</td></tr>`; }).join("")}
-  ${bad.map(s => `<tr><td>-</td><td><b>${esc(ticker(s))}</b> <span class="mut small">${esc(s.name)}</span></td><td colspan="8" class="warn small">no price data on the last update</td></tr>`).join("")}</table>`;
+  $("heatBox").innerHTML = `<table><tr><th>#</th><th>Stock</th><th class="n">Last</th><th class="n">Day</th><th class="n">1M</th><th>Bias</th><th class="n">Score</th><th>Conf.</th><th>Regime</th><th>Flow</th><th>Options</th><th>Risk</th><th>Top catalyst</th></tr>
+  ${ok.map((s, i) => { const o = s.flow && s.flow.options, reds = (s.risk || []).filter(r => r.level === "red").length; return `<tr style="background:${shade(s.confluence.score)}"><td>${i + 1}</td><td><a href="#t-${esc(ticker(s))}" data-open="${esc(ticker(s))}"><b>${esc(ticker(s))}</b></a> <span class="mut small">${esc(s.name)}</span></td>
+  <td class="n">${price(s, s.price.last)}${unit(s)}</td><td class="n">${pc(s.price.chg_pct)}</td><td class="n">${pc(s.returns["1m"], 1)}</td><td><span class="badge ${biasCls(s.bias)}">${esc(s.bias)}</span></td><td class="n">${s.confluence.score}/10</td><td>${s.confidence}</td>
+  <td>${s.regime ? `<span style="color:${regCol[s.regime.current]}">${regName[s.regime.current]}</span> <span class="mut small">${p100(s.regime.probs[s.regime.current])}</span>` : '<span class="mut">n/a</span>'}</td>
+  <td>${s.flow ? `<span class="${s.flow.overall.tone === "up" ? "up" : s.flow.overall.tone === "dn" ? "dn" : "warn"}">${s.flow.overall.tone === "up" ? "Inflow" : s.flow.overall.tone === "dn" ? "Outflow" : "Mixed"}</span>` : '<span class="mut">n/a</span>'}</td>
+  <td class="small">${o ? `<span class="${o.tone === "up" ? "up" : o.tone === "dn" ? "dn" : "warn"}">${esc(o.label)}</span>${num(o.pc_volume) ? ` <span class="mut">P/C ${f(o.pc_volume, 2)}</span>` : ""}` : '<span class="mut">none</span>'}</td>
+  <td>${reds ? "🔴" + reds : (s.risk || []).some(r => r.level === "amber") ? "🟡" : "🟢"}</td><td class="small">${s.catalyst ? esc(s.catalyst.text) : ""}</td></tr>`; }).join("")}
+  ${bad.map(s => `<tr><td>-</td><td><b>${esc(ticker(s))}</b> <span class="mut small">${esc(s.name)}</span></td><td colspan="11" class="warn small">no price data on the last update</td></tr>`).join("")}</table>`;
 }
-function calendar(c, stocks) {
-  const kinds = ["all", "earnings", "macro", "dividend"];
-  let cur = "all";
+function calendar(c) {
+  const kinds = ["all", "earnings", "macro", "dividend"], wins = [[45, "Next 45 days"], [120, "Next 120 days"]];
+  let cur = "all", win = 45;
   const draw = () => {
-    const ev = c.events.filter(e => (cur === "all" || e.kind === cur) && e.days <= 120);
-    $("calBox").innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${kinds.map(k => `<span class="chip ${k === cur ? "on" : ""}" data-k="${k}">${k[0].toUpperCase() + k.slice(1)}</span>`).join("")}</div>
-    <div class="card tw"><table><tr><th>Date</th><th>In</th><th>Event</th><th>Type</th><th>Notes</th></tr>${ev.map(e => `<tr style="${e.kind === "earnings" && e.days >= 0 && e.days <= 7 ? "background:#f8717122" : ""}"><td class="n">${esc(e.date)}${e.approx ? " ~" : ""}</td><td class="n ${e.days < 0 ? "mut" : e.days <= 7 ? "dn" : ""}">${e.days < 0 ? Math.abs(e.days) + " d ago" : e.days === 0 ? "today" : e.days + " d"}</td><td><b>${esc(e.title)}</b></td><td>${esc(e.kind)}</td><td class="small mut">${esc(e.detail)}</td></tr>`).join("") || '<tr><td colspan="5" class="mut">Nothing scheduled.</td></tr>'}</table></div>
+    const ev = c.events.filter(e => (cur === "all" || e.kind === cur) && e.days <= win);
+    $("calBox").innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${kinds.map(k => `<span class="chip ${k === cur ? "on" : ""}" data-k="${k}">${k[0].toUpperCase() + k.slice(1)}</span>`).join("")}<span style="width:12px"></span>${wins.map(([n, l]) => `<span class="chip ${n === win ? "on" : ""}" data-w="${n}">${l}</span>`).join("")}</div>
+    <div class="card tw"><table><tr><th>Date</th><th>In</th><th>Event</th><th>Type</th><th>Why it matters</th></tr>${ev.map(e => `<tr style="${e.kind === "earnings" && e.days >= 0 && e.days <= 7 ? "background:#f8717122" : ""}"><td class="n">${e.kind === "earnings" && e.days >= 0 && e.days <= 7 ? "🔴 " : ""}${esc(e.date)}${e.approx ? " ~" : ""}</td><td class="n ${e.days < 0 ? "mut" : e.days <= 7 ? "dn" : ""}">${e.days < 0 ? Math.abs(e.days) + " d ago" : e.days === 0 ? "today" : e.days + " d"}</td><td><b>${esc(e.title)}</b><div class="small mut">${esc(e.detail)}</div></td><td>${esc(e.kind)}</td><td class="small">${esc(e.why || "")}</td></tr>`).join("") || '<tr><td colspan="5" class="mut">Nothing scheduled.</td></tr>'}</table></div>
     <div class="small mut">~ means approximate (a reporting window or an estimate). Earnings dates come from company announcements or Alpha Vantage; macro dates from the central banks' published calendars. Verify before trading around them.</div>`;
-    $("calBox").querySelectorAll(".chip").forEach(x => x.onclick = () => { cur = x.dataset.k; draw(); });
+    $("calBox").querySelectorAll(".chip").forEach(x => x.onclick = () => { if (x.dataset.k) cur = x.dataset.k; if (x.dataset.w) win = +x.dataset.w; draw(); });
   };
   draw();
 }
 function method() {
   $("methodBox").innerHTML = `<ul class="small">
-  <li><b>Confluence score (0 to 10):</b> ten yes/no checks: price vs 50 and 200-day averages, 50 above 200, RSI 50-70, MACD above signal, ADX over 20 with buyers in control, Aroon positive, on-balance volume rising, money flow positive, and the regime model favouring bull. 7 or more is Bullish, 3 or fewer Bearish. If a check cannot be computed (short history) the score is scaled to the checks available.</li>
-  <li><b>Regime model:</b> a three-state Gaussian hidden Markov model fitted by Baum-Welch on standardised daily log returns and 20-day realised volatility. States are labelled bear, sideways and bull by their fitted mean return. The probabilities shown are <i>filtered</i> (use data up to today only), never smoothed with future data. Stickiness is the chance the regime persists a day; expected duration is 1 / (1 - stickiness).</li>
-  <li><b>Walk-forward:</b> the model is refitted every 21 sessions on an expanding window using only past data, and the next-day return after each called regime is recorded out of sample. The scaler is fitted on training data only to avoid look-ahead bias.</li>
-  <li><b>Price levels:</b> mechanical, based on 14-day average true range and pivot points. They describe volatility, not an edge.</li>
+  <li><b>Confluence score (0 to 10):</b> ten yes/no checks: price vs 50 and 200-day averages, 50 above 200, RSI 50-70, MACD above signal, ADX over 20 with buyers in control, Aroon positive, on-balance volume rising, money flow positive, and the regime model favouring bull. 7 or more is Bullish, 3 or fewer Bearish; 5-6 leans bullish, 4 leans bearish. If a check cannot be computed (short history) the score is scaled to the checks available.</li>
+  <li><b>Regime model:</b> a three-state Gaussian hidden Markov model fitted by Baum-Welch on standardised daily log returns and 20-day realised volatility. States are labelled bear, sideways and bull by their fitted mean return. The probabilities shown are <i>filtered</i> (use data up to today only), never smoothed with future data. Stickiness is the chance the regime persists a day; expected duration is 1 / (1 - stickiness). Walk-forward: refit every 21 sessions on an expanding window, scaler fitted on training data only.</li>
+  <li><b>Money flow:</b> OBV, Chaikin money flow, Money Flow Index, accumulation/distribution, up/down-day volume, accumulation and distribution days, 20/50-day VWAP and a 6-month volume profile come from daily price and volume bars. Off-exchange and short-sale volume are FINRA's daily public files (US-listed only). Short interest and insider trades come from Nasdaq (US, twice a month for short interest), UK short positions from the FCA register. Options come from CBOE delayed chains; for ASML, Lloyds and Alibaba the US-listed ADR options are used as a proxy. Adyen, Sligro, BYD and DiDi have no listed options. Dark pool venue-level data (FINRA ATS) needs credentials and is not included, and the Dutch AFM and HKEX short registers have no usable feed.</li>
+  <li><b>IV rank</b> needs a history of the stock's own implied volatility, which this site records once per day from now on; it appears after 20 daily readings.</li>
+  <li><b>Price levels and ranges:</b> mechanical, based on 14-day average true range, pivot points and options-implied volatility. They describe volatility, not an edge.</li>
   <li><b>News tone:</b> a keyword count on headline text (Google News, CNBC, MarketWatch, Investing.com). It is crude and can be wrong, for example on sarcasm or negation.</li>
-  <li><b>Limits:</b> regime detection describes, it does not predict; it cannot see the news that ends a regime. Three states is a modelling choice. Daily bars say nothing about intraday moves. No costs, slippage or taxes are included. Thinly traded names (such as OTC DIDIY) give less reliable indicators.</li></ul>`;
+  <li><b>Limits:</b> flow measures are proxies for institutional activity, not observations of it. Regime detection describes, it does not predict; it cannot see the news that ends a regime. Three states is a modelling choice. Daily bars say nothing about intraday moves. No costs, slippage or taxes are included. Thinly traded names (such as OTC DIDIY) give less reliable indicators.</li></ul>`;
 }
 
-// ---------- boot
 async function getJSON(name) {
   const r = await fetch("data/" + name + "?t=" + Date.now());
   if (!r.ok) throw new Error(name + " returned HTTP " + r.status);
@@ -277,7 +407,7 @@ async function boot() {
     else if (meta.tickers_ok < meta.tickers_total) msgs.push(`${meta.tickers_total - meta.tickers_ok} stock(s) have no price data right now.`);
     if (stale > 30) msgs.push("The data is more than a day old: the scheduled update may have stopped.");
     $("status").innerHTML = msgs.map(x => `<div class="note err" style="margin:10px 0">${esc(x)}</div>`).join("");
-    ideas(st.stocks); marketSection(m); heat(st.stocks); calendar(cal, st.stocks);
+    ideas(st.stocks); marketSection(m); heat(st.stocks); calendar(cal);
     $("stockBox").innerHTML = st.stocks.map(stockCard).join("");
     openIds.forEach(id => { if ($(id)) $(id).open = true; });
     if (!wired) {

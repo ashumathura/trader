@@ -271,13 +271,18 @@ def top_catalyst(s):
     it = next((i for i in s["news"]["items"] if i["tone"] != "neu"), None) or (s["news"]["items"][0] if s["news"]["items"] else None)
     return {"kind": "news", "text": it["title"][:70]} if it else {"kind": "none", "text": "No near-term catalyst"}
 
+def market_cap(s):
+    """Market cap is only known for US-listed names (from the Nasdaq summary); an ADR's short-interest record is not the local listing's."""
+    sh = (s.get("flow") or {}).get("short") or {}
+    return None if sh.get("adr") else sh.get("market_cap")
+
 def enrich(stocks, charts, events, macro):
     for s in stocks:
         if s["status"] != "ok": continue
         t = next(x for x in TICKERS if x["ticker"] == s["ticker"])
         series = (charts[s["ticker"]]["bars"]["t"], charts[s["ticker"]]["bars"]["c"])
         s["lean"] = context.lean(s["confluence"]["score"])
-        s["identity"] = context.identity(s)
+        s["identity"] = context.identity(s, market_cap(s))
         s["context"] = context.sector_context(t, s["returns"]["1m"], series, context._Q)
         s["risk"] = context.risk_table(s, s["events"], macro, s["context"].get("fx"))
         s["range"] = context.session_range(s)

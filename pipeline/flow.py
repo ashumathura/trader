@@ -231,7 +231,7 @@ def short_interest(sym, price):
     if not rows: return None
     cur = rows[0]; prev = rows[1] if len(rows) > 1 else None
     chg = (cur["shares"] / prev["shares"] - 1) * 100 if prev and prev["shares"] else None
-    pct = None
+    pct = None; mcap = None
     sm = lib.cached_get("https://api.nasdaq.com/api/quote/%s/summary?assetclass=stocks" % sym, 12 * 3600, "short_interest", headers=H)
     try:
         mc = lib._json_after(sm)["data"]["summaryData"]["MarketCap"]["value"]
@@ -240,7 +240,7 @@ def short_interest(sym, price):
     except Exception: pass
     tone = "dn" if (cur["days_to_cover"] >= 5 or (chg is not None and chg > 8)) else "up" if (chg is not None and chg < -8) else "mid"
     return {"date": cur["date"], "shares": cur["shares"], "days_to_cover": cur["days_to_cover"], "change_pct": chg,
-            "pct_of_shares": pct, "history": [{"date": r["date"], "shares": r["shares"]} for r in rows[:8]][::-1], "tone": tone}
+            "pct_of_shares": pct, "market_cap": mcap, "history": [{"date": r["date"], "shares": r["shares"]} for r in rows[:8]][::-1], "tone": tone}
 
 
 # ----------------------------------------------------------------------------- insider trades (Nasdaq, US only)
