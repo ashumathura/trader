@@ -99,9 +99,9 @@ class UkShorts(unittest.TestCase):
         self.assertEqual(r["holders"], 1); self.assertAlmostEqual(r["total_pct"], 0.9)
         self.assertRegex(r["date"], r"^\d{4}-\d\d-\d\d$")
 
-    def test_fraction_values_are_scaled(self):
-        blob = self.make_xlsx([["Position Holder", "Name of Share Issuer", "Net Short Position (%)"], ["A", "LLOYDS BANKING GROUP", 0.012]])
-        self.assertAlmostEqual(flow.fca_shorts(flow.read_xlsx(blob), "lloyds")["total_pct"], 1.2)
+    def test_positions_below_disclosure_line_are_ignored(self):
+        blob = self.make_xlsx([["Position Holder", "Name of Share Issuer", "Net Short Position (%)"], ["A", "LLOYDS BANKING GROUP", 0.49]])
+        self.assertEqual(flow.fca_shorts(flow.read_xlsx(blob), "lloyds")["holders"], 0)
 
     def test_unknown_layout_gives_none(self):
         self.assertIsNone(flow.fca_shorts([{"A": "foo"}], "x"))

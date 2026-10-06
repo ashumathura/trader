@@ -321,12 +321,11 @@ def fca_shorts(rows, issuer_match):
         except Exception: continue
         d = _xl_date(r.get(c_date)) or ""; holder = r.get(c_hold) or "?"
         if holder not in latest or d >= latest[holder][2]: latest[holder] = (pct, holder, d)
-    pos = sorted((p for p in latest.values() if p[0] > 0), reverse=True)
+    # the register states percentages; below the 0.5% disclosure line a position is closed (or a stale remnant)
+    pos = sorted((p for p in latest.values() if p[0] >= 0.5), reverse=True)
     if not pos: return {"holders": 0, "total_pct": 0.0, "top": [], "date": max((p[2] for p in latest.values()), default=None) or None}
-    # values may be fractions (0.012) or percents (1.2); disclosure threshold is 0.5%, so anything below 0.5 as fraction means percent already
-    scale = 100 if max(p[0] for p in pos) < 0.5 else 1
-    return {"holders": len(pos), "total_pct": sum(p[0] for p in pos) * scale,
-            "top": [{"holder": p[1], "pct": p[0] * scale, "date": p[2] or None} for p in pos[:4]],
+    return {"holders": len(pos), "total_pct": sum(p[0] for p in pos),
+            "top": [{"holder": p[1], "pct": p[0], "date": p[2] or None} for p in pos[:4]],
             "date": max((p[2] for p in pos if p[2]), default=None)}
 
 def uk_shorts(issuer_match):
