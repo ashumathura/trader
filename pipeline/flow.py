@@ -340,7 +340,8 @@ def parse_chain(js):
         except ValueError: continue
         bid, ask, last = o.get("bid") or 0, o.get("ask") or 0, o.get("last_trade_price") or 0
         mid = (bid + ask) / 2 if bid and ask else last
-        out.append({"exp": exp, "type": m.group(3), "strike": int(m.group(4)) / 1000, "mid": mid, "iv": o.get("iv") or 0, "oi": o.get("open_interest") or 0,
+        spread = (ask - bid) / mid if bid and ask and mid else 9.9
+        out.append({"exp": exp, "type": m.group(3), "strike": int(m.group(4)) / 1000, "mid": mid, "spread": spread, "iv": o.get("iv") or 0, "oi": o.get("open_interest") or 0,
                     "vol": o.get("volume") or 0, "delta": o.get("delta") or 0})
     return spot, out
 
@@ -369,7 +370,8 @@ def options_summary(spot, contracts, today, hv=None):
     cand = [e for e in exps if 14 <= (e - today).days <= 75] or [e for e in exps if (e - today).days >= 5]
     if cand:
         e30 = min(cand, key=lambda e: abs((e - today).days - 30)); dte = (e30 - today).days
-        ch = [c for c in contracts if c["exp"] == e30 and c["iv"] > 0.01]
+        # implied volatility from wide, illiquid quotes is noise: only use options whose bid/ask spread is under 35% of the mid price
+        ch = [c for c in contracts if c["exp"] == e30 and c["iv"] > 0.01 and c.get("spread", 0) < 0.35]
         atm = sorted(ch, key=lambda c: abs(c["strike"] - spot))[:4]
         ivs = [c["iv"] for c in atm if abs(c["strike"] - spot) / spot < 0.08]
         if ivs:
@@ -471,6 +473,7 @@ def build(t, bars, tech, ctx, today):
     elif adr:
         si = short_interest(adr, None)
         if si: si["pct_of_shares"] = None; si["adr"] = adr
+        else: out["gaps"].append("Short interest for the US ADR %s is not published." % adr)
         out["short"] = si
         out["gaps"].append("Off-exchange (dark pool) data is only published for US-listed symbols.")
     else:

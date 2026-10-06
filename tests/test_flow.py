@@ -126,6 +126,12 @@ class Options(unittest.TestCase):
         today, ch = chain(iv=0.30); r = flow.options_summary(100.0, ch, today, hv=0.20)
         self.assertAlmostEqual(r["iv"], 0.31, delta=0.02); self.assertAlmostEqual(r["expected_move_pct"], r["iv"] * math.sqrt(30 / 365) * 100, places=6); self.assertGreater(r["iv_vs_hv"], 1.3)
 
+    def test_wide_spread_quotes_do_not_set_iv(self):
+        today, ch = chain(iv=0.30)
+        for c in ch: c["spread"] = 0.8  # illiquid quotes
+        r = flow.options_summary(100.0, ch, today)
+        self.assertNotIn("iv", r); self.assertNotIn("expected_move_pct", r)
+
     def test_max_pain_is_a_listed_strike_with_heaviest_oi(self):
         today, ch = chain(); r = flow.options_summary(100.0, ch, today); self.assertEqual(r["max_pain"], 100.0)
 

@@ -36,3 +36,4 @@ jobs:
           print("UNIVERSE", json.dumps(mk["universe"])[:700])
           print("QUOTES ok", sum(1 for q in mk["quotes"] if q.get("price")), "of", len(mk["quotes"]))
           PY
+# rerun 15:59

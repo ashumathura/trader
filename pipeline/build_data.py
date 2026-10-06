@@ -203,7 +203,7 @@ def preamble(quotes, heads, events):
     mv = lambda s: "%s %+.2f%%" % (q[s]["name"], q[s]["chg_pct"]) if s in q else None
     row = lambda label, syms, extra="": {"label": label, "text": ", ".join(x for x in (mv(s) for s in syms) if x) + extra} if any(s in q for s in syms) else None
     out = [row("US cash and futures", ["^GSPC", "^IXIC", "ES=F", "NQ=F"]),
-           row("Asia", ["^N225", "000300.SS", "^HSI"]),
+           row("Asia", ["^N225", "000001.SS", "^HSI"]),
            row("Europe", ["^STOXX", "^STOXX50E", "^GDAXI", "^AEX", "^FTSE"])]
     rates = []
     if "^TNX" in q: rates.append("US 10-year yield %.2f%% (%+.1f%%)" % (q["^TNX"]["price"], q["^TNX"]["chg_pct"]))

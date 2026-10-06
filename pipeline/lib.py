@@ -342,5 +342,5 @@ CENTRAL_BANK_FEEDS = [
 ]
 INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("ES=F", "S&P 500 futures"), ("NQ=F", "Nasdaq futures"),
            ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^STOXX", "STOXX 600"), ("^FTSE", "FTSE 100"), ("^GDAXI", "DAX"),
-           ("^N225", "Nikkei 225"), ("000300.SS", "CSI 300"), ("^HSI", "Hang Seng"),
+           ("^N225", "Nikkei 225"), ("000001.SS", "Shanghai Composite"), ("^HSI", "Hang Seng"),
            ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("DX-Y.NYB", "US dollar index"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold")]
