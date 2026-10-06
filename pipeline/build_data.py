@@ -300,7 +300,7 @@ def drivers_box(quotes, rates, vol, macro_summary):
     if eq:
         up = sum(1 for x in eq if x["chg_pct"] >= 0)
         hi = [x["name"] for x in eq if x.get("extreme", "") and "highest" in (x.get("extreme") or "") ]
-        out.append({"label": "Equities", "text": "%d of %d major indices rose%s." % (up, len(eq), "; at or near 12-month highs: " + ", ".join(hi) if hi else "")})
+        out.append({"label": "Equities", "text": "%d of %d major indices rose%s." % (up, len(eq), "; at their highest close in 12 months: " + ", ".join(hi) if hi else "")})
     r10 = ry.get("US 10Y")
     if r10:
         t = "US 10-year yield %.2f%% (%s bp on the day)" % (r10["last"], "%+.0f" % r10["chg_1d_bp"] if r10.get("chg_1d_bp") is not None else "n/a")

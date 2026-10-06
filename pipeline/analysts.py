@@ -176,6 +176,7 @@ def sentiment(cons, counts, rev90):
         buy_pct = (last["strong_buy"] + last["buy"]) / last["total"] * 100
         sell_pct = (last["sell"] + last["strong_sell"]) / last["total"] * 100
         if buy_pct >= 70: score += 1; why.append("%.0f%% of analysts rate it Buy." % buy_pct)
+        if buy_pct >= 85 and last["total"] >= 8: score += 1
         elif buy_pct <= 35 or sell_pct >= 30: score -= 1; why.append("Only %.0f%% of analysts rate it Buy, %.0f%% Sell." % (buy_pct, sell_pct))
     net = rev90["upgrades"] - rev90["downgrades"]
     if net >= 2: score += 1; why.append("%d upgrades vs %d downgrades in 90 days." % (rev90["upgrades"], rev90["downgrades"]))
@@ -183,6 +184,7 @@ def sentiment(cons, counts, rev90):
     tr = rev90["target_raises"] - rev90["target_cuts"]
     if tr >= 3: score += 1; why.append("%d target raises vs %d cuts in 90 days." % (rev90["target_raises"], rev90["target_cuts"]))
     elif tr <= -3: score -= 1; why.append("%d target cuts vs %d raises in 90 days." % (rev90["target_cuts"], rev90["target_raises"]))
+    if cons.get("upside_pct") is not None and cons["upside_pct"] >= 20 and cons.get("n", 0) >= 5: score += 1; why.append("Mean target is %.0f%% above the price." % cons["upside_pct"])
     if cons.get("upside_pct") is not None and cons["upside_pct"] < -5: score -= 1; why.append("Price is %.0f%% above the mean target." % abs(cons["upside_pct"]))
     tone = "up" if score >= 2 else "dn" if score <= -2 else "mid"
     return {"score": score, "tone": tone, "label": {"up": "Constructive", "dn": "Cautious", "mid": "Mixed"}[tone], "why": why}
@@ -230,7 +232,9 @@ def analyse(t, today, price=None):
     if not d: return None
     cons, counts, acts = d["consensus"], d["counts"], d["actions"]
     r30, r90 = revisions(acts, today, 30), revisions(acts, today, 90)
-    cons["currency_note"] = "targets in %s as shown by the source" % (cons.get("symbol") or "local currency")
+    # the page prints Hong Kong dollars as "$"; show the stock's own currency so targets sit next to the price they refer to
+    cons["symbol"] = {"EUR": "\u20ac", "USD": "$", "HKD": "HK$", "GBp": ""}.get(t.get("currency"), cons.get("symbol"))
+    cons["currency_note"] = "targets in %s as shown by the source" % (t.get("currency") or "local currency")
     out = {"source": "stockanalysis.com (S&P Global, TipRanks)", "url": BASE % slug, "asof": today.isoformat(), "consensus": cons, "counts": counts,
            "trend": trend(d["history"]), "history": d["history"][-13:], "actions": acts[:15], "rev30": r30, "rev90": r90, "estimates": d["estimates"],
            "snapshot": snapshot(t["ticker"], today, cons), "sentiment": sentiment(cons, counts, r90)}

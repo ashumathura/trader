@@ -42,18 +42,13 @@ def parse_treasury(txt):
             out.setdefault(h.strip(), []).append((d, x))
     return {k: sorted(v) for k, v in out.items()}
 
-TREASURY_ALL = ("https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/all/all"
-                "?type=%s&field_tdr_date_value=all&page&_format=csv")
-
 def treasury(kind, years):
-    """Full history in one file when the Treasury serves it (lets us say 'highest since 2007'); otherwise the last two years."""
-    txt = lib.cached_get(TREASURY_ALL % kind, 24 * 3600, "treasury", validate=lambda t: t.lstrip("\ufeff").startswith("Date") and t.count("\n") > 3000)
-    if txt:
-        full = parse_treasury(txt)
-        if full: return full
+    """Daily curve for each calendar year in `years` (old years never change, so they are cached for a month)."""
     series = {}
+    this_year = dt.date.today().year
     for y in years:
-        txt = lib.cached_get(TREASURY % (y, kind, y), 6 * 3600, "treasury", validate=lambda t: t.lstrip("﻿").startswith("Date"))
+        ttl = 6 * 3600 if y >= this_year else 30 * 86400
+        txt = lib.cached_get(TREASURY % (y, kind, y), ttl, "treasury", validate=lambda t: t.lstrip("\ufeff").startswith("Date"))
         if not txt: continue
         for k, v in parse_treasury(txt).items(): series.setdefault(k, []).extend(v)
     return {k: sorted(set(v)) for k, v in series.items()}
@@ -166,12 +161,12 @@ def build(today):
     since = today - dt.timedelta(days=500)
     rows, raw, notes = [], {}, []
     # US Treasury nominal and real
-    nom = treasury("daily_treasury_yield_curve", (today.year - 1, today.year))
+    nom = treasury("daily_treasury_yield_curve", range(2000, today.year + 1))
     for key, label in (("2 Yr", "US 2Y"), ("5 Yr", "US 5Y"), ("10 Yr", "US 10Y"), ("30 Yr", "US 30Y")):
         s = nom.get(key)
         r = s and stats(s, label, label, "US Treasury")
         if r: rows.append(r); raw[label] = s
-    real = treasury("daily_treasury_real_yield_curve", (today.year - 1, today.year))
+    real = treasury("daily_treasury_real_yield_curve", range(2003, today.year + 1))
     r10 = real.get("10 YR") or real.get("10 Yr")
     if r10:
         r = stats(r10, "US 10Y real", "US 10Y real (TIPS)", "US Treasury")

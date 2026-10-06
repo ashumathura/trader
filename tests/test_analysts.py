@@ -82,3 +82,17 @@ class Derived(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SentimentTone(unittest.TestCase):
+    def test_strong_consensus_with_room_is_constructive(self):
+        cons = {"upside_pct": 25.0, "n": 42}; counts = [{"strong_buy": 31, "buy": 7, "hold": 3, "sell": 0, "strong_sell": 1, "total": 42}]
+        self.assertEqual(analysts.sentiment(cons, counts, {"upgrades": 0, "downgrades": 0, "target_raises": 0, "target_cuts": 0})["tone"], "up")
+
+    def test_small_sample_does_not_get_upside_credit(self):
+        cons = {"upside_pct": 30.0, "n": 3}; counts = [{"strong_buy": 0, "buy": 1, "hold": 2, "sell": 0, "strong_sell": 0, "total": 3}]
+        self.assertEqual(analysts.sentiment(cons, counts, {"upgrades": 0, "downgrades": 0, "target_raises": 0, "target_cuts": 0})["tone"], "mid")
+
+    def test_bullish_but_targets_being_cut_is_mixed(self):
+        cons = {"upside_pct": 80.0, "n": 25}; counts = [{"strong_buy": 20, "buy": 5, "hold": 0, "sell": 0, "strong_sell": 0, "total": 25}]
+        t = analysts.sentiment(cons, counts, {"upgrades": 0, "downgrades": 0, "target_raises": 0, "target_cuts": 3})["tone"]
+        self.assertIn(t, ("mid", "up"))

@@ -37,7 +37,8 @@ def sensitivity(series, factor_series, factors, n=60):
 
 def narrative(name, corr, labels):
     """Sentences naming the strongest links, or saying there are none worth reporting."""
-    items = sorted(((abs(c), k, c) for k, c in corr.items() if c is not None and abs(c) >= NOTABLE), reverse=True)[:3]
+    skip = {"CL=F"} if corr.get("BZ=F") is not None else set()   # WTI and Brent move together: one sentence is enough
+    items = sorted(((abs(c), k, c) for k, c in corr.items() if c is not None and abs(c) >= NOTABLE and k not in skip), reverse=True)[:3]
     if not items:
         return "%s shows no strong link to oil, yields, the dollar or volatility over the last 60 sessions." % name
     return "; ".join("%s tends to %s when %s (correlation %+.2f)" % (name, "rise" if c > 0 else "fall", labels[k][1], c) for _, k, c in items) + "."
@@ -45,7 +46,9 @@ def narrative(name, corr, labels):
 def summarise(per_stock, factors):
     """Cross-stock lines: how many stocks lean the same way on a factor."""
     lines = []
+    have_brent = any(k == "BZ=F" for k, _, _ in factors)
     for k, label, phrase in factors:
+        if k == "^GSPC" or (k == "CL=F" and have_brent): continue   # market beta and duplicate oil add no information
         vals = [(t, c[k]) for t, c in per_stock.items() if c.get(k) is not None]
         if len(vals) < 5: continue
         neg = [t for t, c in vals if c <= -NOTABLE]; pos = [t for t, c in vals if c >= NOTABLE]

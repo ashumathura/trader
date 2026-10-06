@@ -93,3 +93,13 @@ class Macro(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class MacroDedupe(unittest.TestCase):
+    def test_brent_replaces_wti_in_text(self):
+        corr = {"CL=F": -0.5, "BZ=F": -0.5, "^TNX": 0.1}
+        txt = macro.narrative("Zed", corr, {"CL=F": ("WTI", "oil rises"), "BZ=F": ("Brent", "Brent oil rises"), "^TNX": ("10Y", "yields rise")})
+        self.assertIn("Brent oil rises", txt); self.assertNotIn(" when oil rises", txt)
+
+    def test_market_beta_not_a_summary_theme(self):
+        per = {"S:%d" % i: {"^GSPC": 0.6} for i in range(6)}
+        self.assertEqual(macro.summarise(per, [("^GSPC", "S&P 500", "the S&P 500 rises")]), [])

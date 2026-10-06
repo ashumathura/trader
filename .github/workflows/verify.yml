@@ -39,3 +39,4 @@ jobs:
           for p in mk["preamble"]: print("PRE", p["label"], "|", p["text"])
           q = mk["quotes"]; print("QUOTES ok", sum(1 for z in q if z.get("price")), "of", len(q), "missing:", [z["symbol"] for z in q if not z.get("price")])
           PY
+# rerun 16:32

@@ -408,7 +408,8 @@ function analystBlock(s) {
   const A = s.analysts;
   if (!A) return `<h4>Analyst ratings and price targets</h4><div class="small mut">Analyst data could not be fetched for this stock on the last update.</div>`;
   const c = A.consensus, last = A.counts && A.counts.length ? A.counts[A.counts.length - 1] : null, sym = c.symbol || "";
-  const price = x => num(x) ? sym + f(x, x < 10 ? 2 : x < 1000 ? 2 : 0) : "n/a";
+  const suf = s.currency === "GBp" ? "p" : "";
+  const price = x => num(x) ? sym + f(x, x < 10 ? 2 : x < 1000 ? 2 : 0) + suf : "n/a";
   const bar = last && last.total ? `<div class="bar" title="Strong Buy / Buy / Hold / Sell / Strong Sell">${[["strong_buy", "var(--up)"], ["buy", "color-mix(in srgb, var(--up) 55%, transparent)"], ["hold", "var(--warn)"], ["sell", "color-mix(in srgb, var(--dn) 55%, transparent)"], ["strong_sell", "var(--dn)"]].map(([k, col]) => `<i style="width:${last[k] / last.total * 100}%;background:${col}"></i>`).join("")}</div>
     <div class="small mut" style="display:flex;justify-content:space-between"><span class="up">Strong Buy ${last.strong_buy} · Buy ${last.buy}</span><span class="warn">Hold ${last.hold}</span><span class="dn">Sell ${last.sell} · Strong Sell ${last.strong_sell}</span></div>` : "";
   const t = A.trend, sn = A.snapshot, r30 = A.rev30, r90 = A.rev90;
