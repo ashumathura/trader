@@ -1,5 +1,5 @@
 """Shared helpers for the public data pipeline (stdlib only). No personal data is handled here."""
-import hashlib, json, math, os, re, statistics, threading, time
+import hashlib, json, math, os, re, statistics, sys, threading, time
 import datetime as dt
 import urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
@@ -27,7 +27,8 @@ def cached_get(url, ttl, source=None, timeout=15):
         open(p, "w", encoding="utf-8").write(txt)
         if source: STATUS[source] = "live"
         return txt
-    except Exception:
+    except Exception as e:
+        print("fetch failed [%s] %s: %s" % (source or "-", url.split("?")[0], e), file=sys.stderr)
         if os.path.exists(p):
             if source: STATUS.setdefault(source, "cached")
             return open(p, encoding="utf-8").read()
@@ -38,9 +39,12 @@ _mem = {}
 
 # ----------------------------------------------------------------------------- yahoo prices
 def yahoo_chart(sym, rng="2y", interval="1d", ttl=3600, drop_partial=True):
-    url = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s&events=div" % (
-        urllib.parse.quote(sym), rng, interval)
-    txt = cached_get(url, ttl, "yahoo")
+    txt = None
+    for host in ("query1", "query2"):  # Yahoo throttles some hosts/IP ranges independently
+        url = "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s&events=div" % (
+            host, urllib.parse.quote(sym), rng, interval)
+        txt = cached_get(url, ttl, "yahoo")
+        if txt: break
     if not txt: return None
     try:
         res = json.loads(txt)["chart"]["result"][0]
