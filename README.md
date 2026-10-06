@@ -6,10 +6,10 @@ A GitHub Action rebuilds a public web page every 30 minutes on weekdays and publ
 
 It covers a fixed list of ten stocks (see `watchlist.json`) with technical analysis, a hidden-Markov regime model, price levels, news, market trends and an event calendar. **It contains no personal data**: no holdings, quantities, purchase prices or links to private sheets.
 
-## What the page shows (summary)
+## What the page shows
 Per stock: technicals, regime model, money flow and options, price levels, catalysts and **analyst ratings, price targets and changes**, sector context, macro sensitivity and a risk table. Market trends: drivers box, macro preamble, indices, currencies, commodities (Brent, WTI, gold, copper, softs), crypto in EUR and USD, **government bond yields and spreads** (US, UK, euro area, Germany, France, Italy, Spain, Netherlands), a volatility panel, sector heat map and a "what moves your stocks" correlation matrix.
 
-## What the page shows
+### In more detail
 - **Top ideas and heat map**: stocks ranked by a 0 to 10 confluence score (ten yes/no bullish checks).
 - **Per stock**: price chart with 50 and 200-day averages, RSI, ADX, MACD, Aroon, Hull MA, OBV, CMF, Bollinger, pivots, weekly overlay, mechanical entry/target/stop levels.
 - **Regime model**: 3-state Gaussian HMM (bear, sideways, bull) with filtered probabilities, stickiness, expected duration, transition matrix, regime moments and an out-of-sample walk-forward check (see `quant-signals-guide.md` ideas in `pipeline/analysis.py`).
