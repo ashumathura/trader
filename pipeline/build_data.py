@@ -2,18 +2,18 @@
 """
 Builds the public site: docs/index.html plus docs/data/*.json
 Input : watchlist.json (tickers and public company details only; no holdings anywhere)
-Output: stocks.json (analysis + news per ticker), market.json, calendar.json, meta.json
+Output: stocks.json (analysis, money flow, options, context, risk, news per ticker), market.json, calendar.json, meta.json
 
 Run locally:  python3 pipeline/build_data.py
 In CI:        .github/workflows/update-data.yml  (optional secret AV_KEY: Alpha Vantage, used for earnings dates
               and as a price fallback when Yahoo is unreachable)
 """
-import csv, io, json, os, shutil, statistics, sys, time, urllib.parse
+import csv, io, json, os, shutil, sys, time, urllib.parse
 import datetime as dt
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lib, analysis
+import lib, analysis, flow, context
 from lib import (yahoo_chart, av_chart, parse_rss, themes_of, cached_get, estimate_next_dividend,
                  MARKET_FEEDS, CENTRAL_BANK_FEEDS, INDICES, STATUS)
 
@@ -75,9 +75,20 @@ def stock_news(t, move_pct):
     return {"mood": mood, "summary": summary, "themes": th[:5], "items": items}
 
 # ----------------------------------------------------------------------------- stocks
-def build_stock(t, data):
+def prefetch_flow():
+    """Shared downloads for the money-flow section: FINRA daily files and the FCA short register."""
+    ctx = {"finra": [], "fca": None}
+    if any(t.get("us") for t in TICKERS):
+        ctx["finra"] = flow.finra_days(today())
+        print("FINRA daily files:", len(ctx["finra"]))
+    fca = next((t["fca"] for t in TICKERS if t.get("fca")), None)
+    if fca: ctx["fca"] = flow.uk_shorts(fca)
+    return ctx
+
+def build_stock(t, data, fctx):
     out = {k: t[k] for k in ("ticker", "yahoo", "name", "sector", "currency", "exchange")}
     out["status"] = "no_data"; out["source"] = None
+    a = None
     if data:
         try:
             a = analysis.analyse(data["bars"])
@@ -87,6 +98,10 @@ def build_stock(t, data):
             out.update(a); out["status"] = "ok"; out["source"] = data["source"]; out["via"] = data.get("via")
             out["bars"] = len(data["bars"]["c"])
             if out["bars"] < 260: out["note"] = "Short price history (%d sessions): 200-day average and regime model need about a year." % out["bars"]
+            try:
+                out["flow"] = flow.build(t, data["bars"], a["tech"], fctx, today())
+            except Exception:
+                print("flow failed for", t["ticker"]); traceback.print_exc(); out["flow"] = None
         else:
             out["note"] = "Not enough price history for analysis."
     move = out.get("price", {}).get("chg_pct")
@@ -94,7 +109,7 @@ def build_stock(t, data):
     return out
 
 # ----------------------------------------------------------------------------- calendar
-def calendar(stocks, data):
+def calendar(data):
     td = today(); ev = []
     # 1) dividends: estimated from each stock's own Yahoo history (when available)
     for t in TICKERS:
@@ -132,18 +147,29 @@ def calendar(stocks, data):
     ev = [e for e in ev if dt.date.fromisoformat(e["date"]) >= td - dt.timedelta(days=3)]
     for e in ev: e["days"] = (dt.date.fromisoformat(e["date"]) - td).days
     ev.sort(key=lambda e: (e["date"], e["kind"]))
-    write("calendar.json", {"events": ev, "today": td.isoformat()})
     return ev
+
+def calendar_notes(events, stocks):
+    """Say why each event matters, using the options-implied move where we have one."""
+    by = {s["ticker"]: s for s in stocks}
+    for e in events:
+        s = by.get(e["ticker"]) if e["ticker"] else None
+        if e["kind"] == "earnings" and s:
+            o = (s.get("flow") or {}).get("options")
+            e["why"] = ("Options imply a move of about +/-%.1f%% by the %s expiry." % (o["expected_move_pct"], o["iv_expiry"][5:])) if o and o.get("expected_move_pct") else "Largest scheduled volatility event for the stock; regimes often break at earnings."
+        elif e["kind"] == "macro": e["why"] = "Rate decisions reprice every stock; markets trade the surprise versus expectations."
+        elif e["kind"] == "dividend": e["why"] = "Price typically drops by about the dividend on the ex-date."
+    return events
 
 # ----------------------------------------------------------------------------- market
 def index_quote(item):
     sym, name = item
-    d = yahoo_chart(sym, "1y", "1d", ttl=900, drop_partial=False)
-    if not d or len(d["bars"]["c"]) < 2: return {"symbol": sym, "name": name, "price": None}
-    c = d["bars"]["c"]
-    tech = lib.compute_tech(d["bars"]) if len(c) >= 60 else None
-    return {"symbol": sym, "name": name, "price": c[-1], "chg_pct": (c[-1] / c[-2] - 1) * 100, "spark": c[-60:],
-            "ret_1m": tech and tech["ret_1m"], "ret_3m": tech and tech["ret_3m"], "ret_ytd": tech and tech["ret_ytd"],
+    q = context.quote(sym, name)
+    if not q: return {"symbol": sym, "name": name, "price": None}
+    c = q["_c"]; b = q["_bars"]
+    tech = lib.compute_tech(b) if len(c) >= 60 else None
+    return {"symbol": sym, "name": name, "price": c[-1], "chg_pct": q["chg_pct"], "spark": c[-60:],
+            "ret_1m": q["ret_1m"], "ret_3m": q["ret_3m"], "ret_ytd": tech and tech["ret_ytd"],
             "rsi": tech and tech["rsi"], "trend": tech and next((s["label"] for s in tech["signals"] if s["label"] in ("Uptrend", "Downtrend", "Mixed trend")), None),
             "above_200": bool(tech and tech["sma200"] and c[-1] > tech["sma200"])}
 
@@ -160,40 +186,60 @@ def breadth(stocks):
         r = s.get("regime")
         if r: reg[r["current"]] += 1
     scores = [s["confluence"]["score"] for s in ok if s["confluence"]["score"] is not None]
+    fl = {"up": 0, "mid": 0, "dn": 0}
+    for s in ok:
+        o = (s.get("flow") or {}).get("overall")
+        if o: fl[o["tone"]] += 1
     return {"n": len(ok), "bullish": sum(s["bias"] == "Bullish" for s in ok), "neutral": sum(s["bias"] == "Neutral" for s in ok),
-            "bearish": sum(s["bias"] == "Bearish" for s in ok), "regimes": reg,
+            "bearish": sum(s["bias"] == "Bearish" for s in ok), "regimes": reg, "flow": fl,
             "avg_confluence": sum(scores) / len(scores) if scores else None,
             "above_50": sum(1 for s in ok if s["tech"]["sma50"] and s["price"]["last"] > s["tech"]["sma50"]),
             "above_200": sum(1 for s in ok if s["tech"]["sma200"] and s["price"]["last"] > s["tech"]["sma200"]),
             "have_200": sum(1 for s in ok if s["tech"]["sma200"])}
 
-def market_read(quotes, heads, br, events):
-    """A few plain-language bullets assembled from the numbers. Descriptive only."""
+def preamble(quotes, heads, events):
+    """Global macro preamble in the report's order: US, Asia, Europe, rates/dollar, volatility, key risks, events."""
     q = {x["symbol"]: x for x in quotes if x.get("price") is not None}
-    out = []
-    eq = [q[s] for s in ("^GSPC", "^IXIC", "^AEX", "^STOXX50E", "^HSI") if s in q]
-    if eq:
-        up = [x for x in eq if x["chg_pct"] >= 0]
-        best = max(eq, key=lambda x: x["chg_pct"]); worst = min(eq, key=lambda x: x["chg_pct"])
-        out.append("%d of %d tracked equity indices rose on the last session. Strongest: %s (%+.2f%%), weakest: %s (%+.2f%%)." % (
-            len(up), len(eq), best["name"], best["chg_pct"], worst["name"], worst["chg_pct"]))
-        tr = [x for x in eq if x.get("trend")]
-        if tr: out.append("Index trends: " + ", ".join("%s %s" % (x["name"], x["trend"].lower()) for x in tr) + ".")
+    mv = lambda s: "%s %+.2f%%" % (q[s]["name"], q[s]["chg_pct"]) if s in q else None
+    row = lambda label, syms, extra="": {"label": label, "text": ", ".join(x for x in (mv(s) for s in syms) if x) + extra} if any(s in q for s in syms) else None
+    out = [row("US cash and futures", ["^GSPC", "^IXIC", "ES=F", "NQ=F"]),
+           row("Asia", ["^N225", "000300.SS", "^HSI"]),
+           row("Europe", ["^STOXX", "^STOXX50E", "^GDAXI", "^AEX", "^FTSE"])]
+    rates = []
+    if "^TNX" in q: rates.append("US 10-year yield %.2f%% (%+.1f%%)" % (q["^TNX"]["price"], q["^TNX"]["chg_pct"]))
+    if "DX-Y.NYB" in q: rates.append("dollar index %.2f (%+.2f%%)" % (q["DX-Y.NYB"]["price"], q["DX-Y.NYB"]["chg_pct"]))
+    if "EURUSD=X" in q: rates.append("EUR/USD %.4f (%+.2f%%)" % (q["EURUSD=X"]["price"], q["EURUSD=X"]["chg_pct"]))
+    if rates: out.append({"label": "Rates, dollar, FX", "text": ", ".join(rates)})
+    vol = []
     if "^VIX" in q:
         v = q["^VIX"]["price"]
-        out.append("VIX at %.1f (%s): %s." % (v, "%+.1f%% on the day" % q["^VIX"]["chg_pct"],
-                   "calm" if v < 16 else "normal" if v < 22 else "elevated, markets are pricing in stress" if v < 30 else "very high, risk-off"))
-    if "^TNX" in q: out.append("US 10-year yield %.2f%% (%+.1f%% on the day)." % (q["^TNX"]["price"], q["^TNX"]["chg_pct"]))
-    if "EURUSD=X" in q: out.append("EUR/USD %.4f (%+.2f%%): moves in the euro change the translated value of dollar earnings for the European names." % (q["EURUSD=X"]["price"], q["EURUSD=X"]["chg_pct"]))
+        vol.append("VIX %.1f (%+.1f%%), %s" % (v, q["^VIX"]["chg_pct"], "calm" if v < 16 else "normal" if v < 22 else "elevated: markets are pricing in stress" if v < 30 else "very high: risk-off"))
+    for s in ("CL=F", "GC=F"):
+        if s in q: vol.append("%s %.2f (%+.2f%%)" % (q[s]["name"], q[s]["price"], q[s]["chg_pct"]))
+    if vol: out.append({"label": "Volatility and commodities", "text": ", ".join(vol)})
+    risks = [h for h in heads if h["tone"] == "neg"][:2]
+    if risks: out.append({"label": "Key risks in the news", "text": " | ".join(h["title"] for h in risks)})
+    soon = [e for e in events if e["kind"] in ("macro", "earnings") and 0 <= e["days"] <= 14]
+    out.append({"label": "Next 14 days", "text": "; ".join("%s (%s)" % (e["title"], e["date"][5:]) for e in soon[:8]) if soon else "No scheduled FOMC, ECB or tracked earnings."})
+    return [x for x in out if x]
+
+def market_read(quotes, heads, br):
+    q = {x["symbol"]: x for x in quotes if x.get("price") is not None}
+    out = []
+    eq = [q[s] for s in ("^GSPC", "^IXIC", "^AEX", "^STOXX50E", "^HSI", "^N225") if s in q]
+    if eq:
+        up = [x for x in eq if x["chg_pct"] >= 0]
+        out.append("%d of %d tracked equity indices rose on the last session." % (len(up), len(eq)))
+        tr = [x for x in eq if x.get("trend")]
+        if tr: out.append("Index trends: " + ", ".join("%s %s" % (x["name"], x["trend"].lower()) for x in tr) + ".")
     if heads:
         pos = sum(h["tone"] == "pos" for h in heads); neg = sum(h["tone"] == "neg" for h in heads)
         out.append("Headline tone across %d recent market stories: %d positive, %d negative, %d neutral (keyword based)." % (len(heads), pos, neg, len(heads) - pos - neg))
     if br["n"]:
-        out.append("Your 10 stocks: %d bullish, %d neutral, %d bearish on the confluence score; %d of %d with a 200-day average trade above it." % (
-            br["bullish"], br["neutral"], br["bearish"], br["above_200"], br["have_200"]) if br["have_200"] else
-            "Your 10 stocks: %d bullish, %d neutral, %d bearish on the confluence score." % (br["bullish"], br["neutral"], br["bearish"]))
-    soon = [e for e in events if e["kind"] in ("macro", "earnings") and 0 <= e["days"] <= 14]
-    if soon: out.append("Next 14 days: " + "; ".join("%s (%s)" % (e["title"], e["date"][5:]) for e in soon[:6]) + ".")
+        out.append(("The %d stocks tracked: %d bullish, %d neutral, %d bearish on the confluence score; %d of %d with a 200-day average trade above it." % (
+            br["n"], br["bullish"], br["neutral"], br["bearish"], br["above_200"], br["have_200"])) if br["have_200"] else
+            "The %d stocks tracked: %d bullish, %d neutral, %d bearish on the confluence score." % (br["n"], br["bullish"], br["neutral"], br["bearish"]))
+        f = br["flow"]; out.append("Money flow across them: %d net inflow, %d mixed, %d net outflow." % (f["up"], f["mid"], f["dn"]))
     return out
 
 def market(stocks, events):
@@ -213,9 +259,30 @@ def market(stocks, events):
     for name, url in CENTRAL_BANK_FEEDS:
         for i in feed_items(url, name, ttl=3600, limit=5): i["bank"] = name; cb.append(i)
     br = breadth(stocks)
-    write("market.json", clean({"quotes": quotes, "headlines": heads, "central_banks": cb, "breadth": br,
-                                "drivers": [{"theme": t, "count": c, "headlines": sample.get(t, [])} for t, c in th[:6]],
-                                "read": market_read(quotes, heads, br, events)}))
+    return quotes, heads, {"quotes": quotes, "headlines": heads, "central_banks": cb, "breadth": br, "preamble": preamble(quotes, heads, events),
+                           "drivers": [{"theme": t, "count": c, "headlines": sample.get(t, [])} for t, c in th[:6]], "read": market_read(quotes, heads, br)}
+
+# ----------------------------------------------------------------------------- per-stock extras that need events, quotes and flow
+def top_catalyst(s):
+    ev = next((e for e in s.get("events", []) if e["kind"] == "earnings" and e["days"] <= 30), None)
+    if ev: return {"kind": "earnings", "text": "Earnings %s (in %d d)" % (ev["date"][5:], ev["days"])}
+    o = (s.get("flow") or {}).get("options")
+    if o and o.get("unusual"): return {"kind": "options", "text": "Unusual options activity"}
+    it = next((i for i in s["news"]["items"] if i["tone"] != "neu"), None) or (s["news"]["items"][0] if s["news"]["items"] else None)
+    return {"kind": "news", "text": it["title"][:70]} if it else {"kind": "none", "text": "No near-term catalyst"}
+
+def enrich(stocks, charts, events, macro):
+    for s in stocks:
+        if s["status"] != "ok": continue
+        t = next(x for x in TICKERS if x["ticker"] == s["ticker"])
+        series = (charts[s["ticker"]]["bars"]["t"], charts[s["ticker"]]["bars"]["c"])
+        s["lean"] = context.lean(s["confluence"]["score"])
+        s["identity"] = context.identity(s)
+        s["context"] = context.sector_context(t, s["returns"]["1m"], series, context._Q)
+        s["risk"] = context.risk_table(s, s["events"], macro, s["context"].get("fx"))
+        s["range"] = context.session_range(s)
+        s["horizon"] = context.time_horizon(s, s["events"])
+        s["catalyst"] = top_catalyst(s)
 
 # ----------------------------------------------------------------------------- main
 def site():
@@ -230,14 +297,35 @@ def main():
         charts = dict(zip([t["ticker"] for t in TICKERS], ex.map(get_chart, TICKERS)))
     ok = sum(1 for d in charts.values() if d)
     print("prices fetched for %d of %d tickers in %.0fs" % (ok, len(TICKERS), time.time() - t0))
-    stocks = [build_stock(t, charts.get(t["ticker"])) for t in TICKERS]
-    events = calendar(stocks, charts)
+    # context symbols (sector ETFs, peers, FX, local indices, plus the market table) are fetched once and shared
+    syms = []
+    for t in TICKERS:
+        for k in ("etf", "index", "fx"):
+            if t.get(k): syms.append(t[k])
+        syms += t.get("peers", [])
+    syms += [s for s, _ in INDICES]
+    with ThreadPoolExecutor(4) as ex:
+        list(ex.map(lambda s: context.quote(s), sorted(set(syms))))
+    print("context quotes: %d of %d in %.0fs" % (sum(1 for s in set(syms) if context._Q.get(s)), len(set(syms)), time.time() - t0))
+    fctx = prefetch_flow()
+    stocks = [build_stock(t, charts.get(t["ticker"]), fctx) for t in TICKERS]
+    events = calendar(charts)
     by = {}
     for e in events:
         if e["ticker"]: by.setdefault(e["ticker"], []).append(e)
-    for s in stocks: s["events"] = [e for e in by.get(s["ticker"], []) if e["days"] >= 0][:4]
+    for s in stocks: s["events"] = [e for e in by.get(s["ticker"], []) if e["days"] >= 0][:5]
+    macro = [e for e in events if e["kind"] == "macro"]
+    enrich(stocks, charts, events, macro)
+    events = calendar_notes(events, stocks)
+    for s in stocks: s["events"] = [e for e in events if e["ticker"] == s["ticker"] and e["days"] >= 0][:5]
+    quotes, heads, mk = market(stocks, events)
+    vix = next((q["price"] for q in quotes if q["symbol"] == "^VIX" and q.get("price")), None)
+    series = {s["ticker"]: (charts[s["ticker"]]["bars"]["t"], charts[s["ticker"]]["bars"]["c"]) for s in stocks if s["status"] == "ok"}
+    spx = context._Q.get("^GSPC")
+    mk["universe"] = context.universe(stocks, series, (spx["_t"], spx["_c"]) if spx else None, events, vix, macro, heads)
+    write("calendar.json", {"events": events, "today": today().isoformat()})
     write("stocks.json", clean({"updated": now_utc().isoformat(timespec="seconds"), "stocks": stocks}))
-    market(stocks, events)
+    write("market.json", clean(mk))
     srcs = {}
     for s in stocks: srcs[s["source"] or "none"] = srcs.get(s["source"] or "none", 0) + 1
     write("meta.json", {"updated": now_utc().replace(tzinfo=None).isoformat(timespec="seconds") + "Z", "tickers_ok": ok,

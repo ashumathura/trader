@@ -9,7 +9,15 @@
       "sector": "Semiconductor equipment",
       "currency": "EUR",
       "exchange": "Euronext Amsterdam",
-      "news": "ASML"
+      "news": "ASML",
+      "adr": "ASML",
+      "etf": "SMH",
+      "peers": [
+        "NVDA",
+        "LRCX",
+        "KLAC"
+      ],
+      "index": "^AEX"
     },
     {
       "ticker": "AMS:ADYEN",
@@ -19,7 +27,14 @@
       "sector": "Payments",
       "currency": "EUR",
       "exchange": "Euronext Amsterdam",
-      "news": "Adyen"
+      "news": "Adyen",
+      "etf": "FINX",
+      "peers": [
+        "PYPL",
+        "FIS",
+        "GPN"
+      ],
+      "index": "^AEX"
     },
     {
       "ticker": "AMS:SLIGR",
@@ -29,7 +44,14 @@
       "sector": "Food distribution",
       "currency": "EUR",
       "exchange": "Euronext Amsterdam",
-      "news": "Sligro Food Group"
+      "news": "Sligro Food Group",
+      "etf": "XLP",
+      "peers": [
+        "SYY",
+        "AD.AS",
+        "CA.PA"
+      ],
+      "index": "^AEX"
     },
     {
       "ticker": "LON:LLOY",
@@ -39,7 +61,17 @@
       "sector": "Banking",
       "currency": "GBp",
       "exchange": "London Stock Exchange",
-      "news": "Lloyds Banking Group"
+      "news": "Lloyds Banking Group",
+      "adr": "LYG",
+      "fca": "Lloyds Banking Group",
+      "etf": "EUFN",
+      "peers": [
+        "BARC.L",
+        "NWG.L",
+        "HSBA.L"
+      ],
+      "index": "^FTSE",
+      "fx": "GBPEUR=X"
     },
     {
       "ticker": "HKG:9988",
@@ -49,7 +81,16 @@
       "sector": "E-commerce and cloud",
       "currency": "HKD",
       "exchange": "Hong Kong",
-      "news": "Alibaba"
+      "news": "Alibaba",
+      "adr": "BABA",
+      "etf": "KWEB",
+      "peers": [
+        "BABA",
+        "JD",
+        "PDD"
+      ],
+      "index": "^HSI",
+      "fx": "HKDEUR=X"
     },
     {
       "ticker": "HKG:1211",
@@ -59,7 +100,15 @@
       "sector": "Electric vehicles",
       "currency": "HKD",
       "exchange": "Hong Kong",
-      "news": "BYD"
+      "news": "BYD",
+      "etf": "DRIV",
+      "peers": [
+        "TSLA",
+        "LI",
+        "NIO"
+      ],
+      "index": "^HSI",
+      "fx": "HKDEUR=X"
     },
     {
       "ticker": "NASDAQ:NFLX",
@@ -69,7 +118,16 @@
       "sector": "Streaming",
       "currency": "USD",
       "exchange": "NASDAQ",
-      "news": "Netflix"
+      "news": "Netflix",
+      "us": "NFLX",
+      "etf": "XLC",
+      "peers": [
+        "DIS",
+        "WBD",
+        "SPOT"
+      ],
+      "index": "^IXIC",
+      "fx": "USDEUR=X"
     },
     {
       "ticker": "NASDAQ:GRAB",
@@ -79,7 +137,16 @@
       "sector": "Southeast Asia super-app",
       "currency": "USD",
       "exchange": "NASDAQ",
-      "news": "Grab Holdings"
+      "news": "Grab Holdings",
+      "us": "GRAB",
+      "etf": "EEM",
+      "peers": [
+        "SE",
+        "UBER",
+        "DASH"
+      ],
+      "index": "^IXIC",
+      "fx": "USDEUR=X"
     },
     {
       "ticker": "NASDAQ:SONO",
@@ -89,7 +156,16 @@
       "sector": "Consumer audio",
       "currency": "USD",
       "exchange": "NASDAQ",
-      "news": "Sonos"
+      "news": "Sonos",
+      "us": "SONO",
+      "etf": "XLY",
+      "peers": [
+        "AAPL",
+        "LOGI",
+        "GPRO"
+      ],
+      "index": "^IXIC",
+      "fx": "USDEUR=X"
     },
     {
       "ticker": "OTCMKTS:DIDIY",
@@ -99,7 +175,17 @@
       "sector": "Ride-hailing",
       "currency": "USD",
       "exchange": "OTC Markets",
-      "news": "DiDi Global"
+      "news": "DiDi Global",
+      "us": "DIDIY",
+      "otc": true,
+      "etf": "KWEB",
+      "peers": [
+        "UBER",
+        "GRAB",
+        "LYFT"
+      ],
+      "index": "^HSI",
+      "fx": "USDEUR=X"
     }
   ],
   "earnings_overrides": {

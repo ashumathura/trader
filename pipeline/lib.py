@@ -52,6 +52,27 @@ def cached_get(url, ttl, source=None, timeout=20, validate=None, headers=None):
         if source: STATUS.setdefault(source, "unavailable")
         return None
 
+def cached_bytes(url, ttl, source=None, timeout=60):
+    """Like cached_get but for binary files (xlsx). Falls back to a stale copy on failure."""
+    p = _path(url) + ".bin"
+    if os.path.exists(p) and time.time() - os.path.getmtime(p) < ttl:
+        if source: STATUS.setdefault(source, "cached")
+        return open(p, "rb").read()
+    try:
+        _throttle(url)
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=timeout) as r:
+            blob = r.read()
+        open(p, "wb").write(blob)
+        if source: STATUS[source] = "live"
+        return blob
+    except Exception as e:
+        print("fetch failed [%s] %s: %s" % (source or "-", url.split("?")[0], e), file=sys.stderr)
+        if os.path.exists(p):
+            if source: STATUS.setdefault(source, "cached")
+            return open(p, "rb").read()
+        if source: STATUS.setdefault(source, "unavailable")
+        return None
+
 _mem = {}
 
 # ----------------------------------------------------------------------------- yahoo prices
@@ -319,5 +340,7 @@ CENTRAL_BANK_FEEDS = [
     ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
     ("ECB", "https://www.ecb.europa.eu/rss/press.html"),
 ]
-INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^FTSE", "FTSE 100"),
-           ("^HSI", "Hang Seng"), ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold")]
+INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("ES=F", "S&P 500 futures"), ("NQ=F", "Nasdaq futures"),
+           ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^STOXX", "STOXX 600"), ("^FTSE", "FTSE 100"), ("^GDAXI", "DAX"),
+           ("^N225", "Nikkei 225"), ("000300.SS", "CSI 300"), ("^HSI", "Hang Seng"),
+           ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("DX-Y.NYB", "US dollar index"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold")]
