@@ -10,3 +10,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 pipeline/probe.py
+        env: { AV_KEY: "${{ secrets.AV_KEY }}" }
