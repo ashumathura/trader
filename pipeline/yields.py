@@ -43,7 +43,7 @@ def parse_treasury(txt):
     return {k: sorted(v) for k, v in out.items()}
 
 def treasury(kind, years):
-    """Daily curve for each calendar year in `years` (old years never change, so they are cached for a month)."""
+    """Daily curve for each calendar year in `years` (finished years never change, so they are cached for a month)."""
     series = {}
     this_year = dt.date.today().year
     for y in years:
@@ -161,12 +161,12 @@ def build(today):
     since = today - dt.timedelta(days=500)
     rows, raw, notes = [], {}, []
     # US Treasury nominal and real
-    nom = treasury("daily_treasury_yield_curve", range(2000, today.year + 1))
+    nom = treasury("daily_treasury_yield_curve", (today.year - 1, today.year))
     for key, label in (("2 Yr", "US 2Y"), ("5 Yr", "US 5Y"), ("10 Yr", "US 10Y"), ("30 Yr", "US 30Y")):
         s = nom.get(key)
         r = s and stats(s, label, label, "US Treasury")
         if r: rows.append(r); raw[label] = s
-    real = treasury("daily_treasury_real_yield_curve", range(2003, today.year + 1))
+    real = treasury("daily_treasury_real_yield_curve", (today.year - 1, today.year))
     r10 = real.get("10 YR") or real.get("10 Yr")
     if r10:
         r = stats(r10, "US 10Y real", "US 10Y real (TIPS)", "US Treasury")
