@@ -48,7 +48,9 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u) ? esc(u) : "#";
 const store = {get(k){try{return localStorage.getItem(k)||""}catch(e){return ""}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}}};
-const DEFAULT_BASE = "https://ashumathura.github.io/trader/data";
+// Served by dashboard/serve.py on localhost: use the data it builds on this computer. Opened from disk: use GitHub Pages.
+const LOCAL = /^https?:$/.test(location.protocol) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const DEFAULT_BASE = LOCAL ? new URL("../docs/data", location.href).href : "https://ashumathura.github.io/trader/data";
 const fmt = (x, d=2) => x == null || isNaN(x) ? "-" : Number(x).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
 const pct = x => x == null || isNaN(x) ? '<span class="mut">-</span>' : `<span class="${x>=0?"up":"dn"}">${x>=0?"+":""}${fmt(x)}%</span>`;
 let state = {rows: [], sort: "value", desc: true, csvText: ""};
@@ -132,6 +134,8 @@ async function load(){
     const [meta, tech, prices, news, market, cal] = await Promise.all(["meta","technicals","prices","news","market","calendar"].map(n=>getJSON(n+".json")));
     if (seq !== loadSeq) return;
     $("stamp").textContent = "data updated " + meta.updated.replace("T"," ").replace("Z"," UTC");
+    state.dataWarn = meta.tickers_ok ? "" : '<span class="warn">The public data has no prices (Yahoo rate-limited the GitHub servers). Run <code>python3 dashboard/serve.py</code> on your computer to fetch them locally. </span>';
+    if (state.dataWarn) $("msg").innerHTML = state.dataWarn;
     renderMarkets(market);
     let text = state.csvText;
     if (!text && $("sheet").value.trim()) {
@@ -141,7 +145,7 @@ async function load(){
     }
     const h = text ? holdingsFromCSV(text) : {pos: [], cash: []};
     if (h.pos.length || h.cash.length) render({tech, prices, news, cal, pos: h.pos, cash: h.cash});
-    $("msg").innerHTML = !h.pos.length ? "No holdings loaded yet." : state.unknown?.length ? `<span class="warn">Not in watchlist.json, no market data: ${esc(state.unknown.join(", "))}</span>` : "";
+    $("msg").innerHTML = state.dataWarn + (!h.pos.length ? "No holdings loaded yet." : state.unknown?.length ? `<span class="warn">Not in watchlist.json, no market data: ${esc(state.unknown.join(", "))}</span>` : "");
   } catch (e) { if (seq === loadSeq) $("msg").innerHTML = `<span class="dn">${esc(e.message)}</span>`; }
 }
 $("base").value = store.get("trader.base") || DEFAULT_BASE; $("sheet").value = store.get("trader.sheet");

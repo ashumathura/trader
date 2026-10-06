@@ -260,7 +260,6 @@ def stock_news(sym):
 MARKET_FEEDS = [
     ("CNBC", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
     ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
-    ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
     ("Investing.com", "https://www.investing.com/rss/news_25.rss"),
 ]
 INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^HSI", "Hang Seng"),
