@@ -232,7 +232,7 @@ def preamble(quotes, heads, events, rates):
         vol.append("VIX %.1f (%+.1f%%), %s" % (v, q["^VIX"]["chg_pct"], "calm" if v < 16 else "normal" if v < 22 else "elevated: markets are pricing in stress" if v < 30 else "very high: risk-off"))
     if "^MOVE" in q: vol.append("MOVE (rates volatility) %.1f (%+.1f%%)" % (q["^MOVE"]["price"], q["^MOVE"]["chg_pct"]))
     if vol: out.append({"label": "Volatility", "text": ", ".join(vol)})
-    com = ["%s %.2f (%+.2f%%)" % (q[s]["name"], q[s]["price"], q[s]["chg_pct"]) for s in ("BZ=F", "CL=F", "GC=F", "HG=F", "SB=F", "CC=F") if s in q]
+    com = ["%s %.2f (%+.2f%%)" % (q[s]["name"], q[s]["price"], q[s]["chg_pct"]) for s in ("BZ=F", "CL=F", "GC=F", "HG=F") if s in q]
     if com: out.append({"label": "Commodities", "text": ", ".join(com)})
     cr = ["%s \u20ac%s (%+.2f%%)" % (q[sy]["name"].split(" ")[0], "{:,.0f}".format(q[sy]["price"]), q[sy]["chg_pct"]) for sy in ("BTC-EUR", "ETH-EUR") if sy in q]
     if cr: out.append({"label": "Crypto (24/7, in EUR)", "text": ", ".join(cr)})
@@ -262,7 +262,7 @@ def market_read(quotes, heads, br):
     return out
 
 def vol_panel(quotes):
-    """VIX family, term structure, SKEW and MOVE with a plain regime label, plus the options-implied S&P 500 move."""
+    """VIX, its term structure, SKEW and MOVE with a plain regime label, plus the options-implied S&P 500 move."""
     q = {x["symbol"]: x for x in quotes if x.get("price") is not None}
     g = lambda s: q[s]["price"] if s in q else None
     vix, v9, v3m = g("^VIX"), g("^VIX9D"), g("^VIX3M")
@@ -279,16 +279,13 @@ def vol_panel(quotes):
         regime = ("Low-volatility bull market" if vix < 16 and bull else "Low volatility, weak trend" if vix < 16 else
                   "Normal volatility, uptrend" if vix < 22 and bull else "Normal volatility, no clear uptrend" if vix < 22 else
                   "Elevated stress" if vix < 30 else "High-volatility crisis regime")
-    notes = []
-    if g("^SKEW") is not None: notes.append("SKEW %.0f: %s (above about 140 means investors are paying up for crash protection)." % (g("^SKEW"), "elevated tail-risk hedging" if g("^SKEW") >= 140 else "normal"))
-    if g("^MOVE") is not None: notes.append("MOVE %.0f: rates volatility is %s (above about 110 signals bond-market stress)." % (g("^MOVE"), "high" if g("^MOVE") >= 110 else "moderate" if g("^MOVE") >= 85 else "low"))
+    out = {"vix": vix, "vix_chg_pct": q["^VIX"]["chg_pct"] if "^VIX" in q else None, "skew": g("^SKEW"), "move": g("^MOVE"), "term": term, "regime": regime}
     em = flow.expected_moves("SPY", today())
-    out = {"vix": vix, "vix9d": v9, "vix3m": v3m, "vvix": g("^VVIX"), "skew": g("^SKEW"), "move": g("^MOVE"), "vxn": g("^VXN"), "ovx": g("^OVX"),
-           "term": term, "regime": regime, "notes": notes}
-    if em:
-        spot = spx.get("price")
-        out["expected"] = [{"exp": m["exp"], "dte": m["dte"], "move_pct": m["move_pct"], "points": spot * m["move_pct"] / 100 if spot else None} for m in em["moves"]]
-        out["expected_source"] = "SPY option straddles, applied to the S&P 500 level"
+    if em and em["moves"]:
+        spot = spx.get("price"); mv = em["moves"]
+        pick = [mv[0]] + ([next((m for m in mv if m["dte"] >= 5), mv[-1])] if len(mv) > 1 else [])
+        out["expected"] = [{"exp": m["exp"], "dte": m["dte"], "move_pct": m["move_pct"], "points": spot * m["move_pct"] / 100 if spot else None} for m in pick if m is not None]
+        out["expected_source"] = "SPY option straddles applied to the S&P 500 level"
     return out
 
 def drivers_box(quotes, rates, vol, macro_summary):
@@ -304,13 +301,12 @@ def drivers_box(quotes, rates, vol, macro_summary):
     r10 = ry.get("US 10Y")
     if r10:
         t = "US 10-year yield %.2f%% (%s bp on the day)" % (r10["last"], "%+.0f" % r10["chg_1d_bp"] if r10.get("chg_1d_bp") is not None else "n/a")
-        if r10.get("extreme"): t += ", " + r10["extreme"]
         sp = {x["label"]: x["bp"] for x in (rates or {}).get("spreads", [])}
         if "France minus Germany 10Y" in sp: t += "; France-Germany spread %.0f bp" % sp["France minus Germany 10Y"]
         out.append({"label": "Fixed income", "text": t + "."})
     if vol and vol.get("vix") is not None:
         out.append({"label": "Volatility", "text": "VIX %.1f%s%s." % (vol["vix"], ", " + vol["regime"].lower() if vol.get("regime") else "", "; term structure " + vol["term"].split(" (")[0].lower() if vol.get("term") else "")})
-    cm = [q[k] for k in ("BZ=F", "GC=F", "HG=F", "SB=F", "CC=F") if k in q]
+    cm = [q[k] for k in ("BZ=F", "CL=F", "GC=F", "HG=F") if k in q]
     if cm:
         top = max(cm, key=lambda x: abs(x["chg_pct"]))
         t = "%s %.2f (%+.2f%%)" % (q["BZ=F"]["name"], q["BZ=F"]["price"], q["BZ=F"]["chg_pct"]) if "BZ=F" in q else ""

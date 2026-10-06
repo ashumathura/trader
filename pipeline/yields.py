@@ -5,8 +5,8 @@ Sources, all public and reachable from GitHub's servers:
   Bank of England  daily nominal par yields (IADB CSV, a few days lag)  UK 5Y 10Y
   ECB           euro-area AAA government yield curve (SDMX CSV)         2Y 10Y
   worldgovernmentbonds.com (through the Jina proxy)                     current 10Y for DE FR IT ES NL
-For the last group there is no history to download, so day-to-day changes come from a snapshot this build
-records once per day; they fill in after the first day.
+For the last group there is no previous close to download, so the change versus yesterday comes from the last snapshot this build
+recorded on the previous day; it appears from the second day onwards.
 """
 import csv
 import datetime as dt
@@ -98,26 +98,16 @@ def country(slug):
     return parse_wgb(txt) if txt else None
 
 
-# ----------------------------------------------------------------------------- statistics
-def stats(series, label, name, source):
-    """Level, changes in basis points, 1-year range and an 'extreme' note for one (date, yield) series."""
-    if len(series) < 3: return None
+# ----------------------------------------------------------------------------- rows
+def level(series, label, name, source):
+    """Latest yield, previous close and the change in basis points for one (date, yield) series."""
+    if len(series) < 2: return None
     d, v = [x[0] for x in series], [x[1] for x in series]
-    last = v[-1]
-    chg = lambda n: (last - v[-1 - n]) * 100 if len(v) > n else None
-    row = {"id": label, "name": name, "source": source, "asof": d[-1].isoformat(), "last": last, "chg_1d_bp": chg(1), "chg_1w_bp": chg(5),
-           "chg_1m_bp": chg(21), "chg_3m_bp": chg(63), "spark": v[-60:]}
-    yr = [x for dd, x in series if (d[-1] - dd).days <= 365]
-    if len(yr) > 20: row["hi_1y"], row["lo_1y"] = max(yr), min(yr)
-    row["extreme"] = extreme(series)
-    return row
-
-def human_span(days):
-    return "%.0f years" % (days / 365.25) if days >= 700 else "%d months" % max(1, round(days / 30.4))
+    return {"id": label, "name": name, "source": source, "asof": d[-1].isoformat(), "last": v[-1], "prev": v[-2], "chg_1d_bp": (v[-1] - v[-2]) * 100}
 
 def extreme(series, min_span_days=60):
     """'highest close since <date> (N months ago)' when today's value is the extreme of at least 60 days; if nothing in the
-    data window beats it, say so with the window length."""
+    data window beats it, say so with the window length. Used for market tiles, not for yields."""
     d, v = [x[0] for x in series], [x[1] for x in series]
     last = v[-1]
     for kind, test in (("highest", lambda x: x >= last), ("lowest", lambda x: x <= last)):
@@ -130,25 +120,27 @@ def extreme(series, min_span_days=60):
             return "%s close since %s (%s ago)" % (kind, d[j].isoformat(), human_span(span))
     return None
 
-def spread(a, b):
-    """Spread a - b in basis points on shared dates: (latest, change 1m, date) or None."""
-    da, db = dict(a), dict(b)
-    days = sorted(set(da) & set(db))
-    if len(days) < 3: return None
-    s = [(d, (da[d] - db[d]) * 100) for d in days]
-    return {"bp": s[-1][1], "chg_1m_bp": s[-1][1] - s[-22][1] if len(s) > 22 else None, "asof": days[-1].isoformat(), "series": s}
+def human_span(days):
+    return "%.0f years" % (days / 365.25) if days >= 700 else "%d months" % max(1, round(days / 30.4))
+
+def spread_row(rows, label, a, b, note):
+    """a minus b in basis points, and how that spread moved since yesterday (difference of the two legs' changes)."""
+    ra, rb = rows.get(a), rows.get(b)
+    if not ra or not rb: return None
+    chg = ra["chg_1d_bp"] - rb["chg_1d_bp"] if ra.get("chg_1d_bp") is not None and rb.get("chg_1d_bp") is not None else None
+    return {"label": label, "bp": (ra["last"] - rb["last"]) * 100, "chg_1d_bp": chg, "note": note}
 
 
-# ----------------------------------------------------------------------------- snapshot history for country yields
+# ----------------------------------------------------------------------------- snapshots for country yields
 def snapshots(today, current):
-    """Record today's country yields, return {code: [(date, y10)]} including earlier days."""
+    """Record today's country yields (the last build of each day wins), return {code: [(date, y10)]} including earlier days."""
     path = os.path.join(lib.CACHE, "yield_history.json")
     try:
         with open(path) as fh: hist = json.load(fh)
     except Exception: hist = {}
     for code, y in current.items(): hist.setdefault(code, {})[today.isoformat()] = y
     for code in hist:
-        for k in sorted(hist[code])[:-400]: hist[code].pop(k)
+        for k in sorted(hist[code])[:-30]: hist[code].pop(k)
     try:
         with open(path, "w") as fh: json.dump(hist, fh)
     except Exception: pass
@@ -157,34 +149,34 @@ def snapshots(today, current):
 
 # ----------------------------------------------------------------------------- assemble
 def build(today):
-    """Everything the page needs for the rates section, plus raw series for the macro sensitivity matrix."""
+    """Rows (level and change vs yesterday), key spreads and breakeven inflation, plus the raw series that feed the
+    stock-sensitivity matrix (not shown as history)."""
     since = today - dt.timedelta(days=500)
-    rows, raw, notes = [], {}, []
-    # US Treasury nominal and real
+    rows, raw = [], {}
     nom = treasury("daily_treasury_yield_curve", (today.year - 1, today.year))
     for key, label in (("2 Yr", "US 2Y"), ("5 Yr", "US 5Y"), ("10 Yr", "US 10Y"), ("30 Yr", "US 30Y")):
-        s = nom.get(key)
-        r = s and stats(s, label, label, "US Treasury")
+        s = nom.get(key); r = s and level(s, label, label, "US Treasury")
         if r: rows.append(r); raw[label] = s
     real = treasury("daily_treasury_real_yield_curve", (today.year - 1, today.year))
     r10 = real.get("10 YR") or real.get("10 Yr")
+    inflation = []
     if r10:
-        r = stats(r10, "US 10Y real", "US 10Y real (TIPS)", "US Treasury")
+        r = level(r10, "US 10Y real", "US 10Y real (TIPS)", "US Treasury")
         if r: rows.append(r); raw["US 10Y real"] = r10
         if nom.get("10 Yr"):
-            be = spread(nom["10 Yr"], r10)
-            if be: notes.append({"label": "US 10Y breakeven inflation", "value": be["bp"] / 100, "unit": "%", "chg_1m_bp": be["chg_1m_bp"], "asof": be["asof"]})
-    # UK gilts
+            dn, dr = dict(nom["10 Yr"]), dict(r10)
+            days = sorted(set(dn) & set(dr))
+            if len(days) >= 2:
+                now_, prev = (dn[days[-1]] - dr[days[-1]]), (dn[days[-2]] - dr[days[-2]])
+                inflation.append({"label": "US 10Y breakeven inflation", "value": now_, "chg_1d_bp": (now_ - prev) * 100, "asof": days[-1].isoformat()})
     b = boe(("IUDSNPY", "IUDMNPY"), since)
     for code, label in (("IUDSNPY", "UK 5Y"), ("IUDMNPY", "UK 10Y")):
-        r = b.get(code) and stats(b[code], label, label + " gilt", "Bank of England")
+        r = b.get(code) and level(b[code], label, label + " gilt", "Bank of England")
         if r: rows.append(r); raw[label] = b[code]
-    # Euro area AAA curve
     for tenor, label in (("2Y", "Euro AAA 2Y"), ("10Y", "Euro AAA 10Y")):
         s = ecb(tenor, since)
-        r = s and stats(s, label, label.replace("Euro AAA", "Euro area AAA") + " (ECB)", "ECB")
+        r = s and level(s, label, label.replace("Euro AAA", "Euro area AAA") + " (ECB)", "ECB")
         if r: rows.append(r); raw[label] = s
-    # country 10-year yields (current value only, history built from daily snapshots)
     cur = {}
     for slug, code, _ in COUNTRIES:
         c = country(slug)
@@ -192,27 +184,17 @@ def build(today):
     hist = snapshots(today, {k: v["y10"] for k, v in cur.items()}) if cur else {}
     for slug, code, name in COUNTRIES:
         if code not in cur: continue
-        h = hist.get(code, [])
-        row = {"id": code + " 10Y", "name": name + " 10Y", "source": "worldgovernmentbonds.com", "asof": today.isoformat(), "last": cur[code]["y10"],
-               "chg_1d_bp": None, "chg_1w_bp": None, "chg_1m_bp": None, "chg_3m_bp": None, "spark": [x[1] for x in h][-60:], "extreme": None,
-               "policy": cur[code].get("policy"), "history_days": len(h)}
-        prev = [x for x in h if x[0] < today]
-        if prev: row["chg_1d_bp"] = (cur[code]["y10"] - prev[-1][1]) * 100
-        old = [x for x in h if (today - x[0]).days >= 28]
-        if old: row["chg_1m_bp"] = (cur[code]["y10"] - old[-1][1]) * 100
-        rows.append(row)
+        prev = [x for x in hist.get(code, []) if x[0] < today]
+        rows.append({"id": code + " 10Y", "name": name + " 10Y", "source": "worldgovernmentbonds.com", "asof": today.isoformat(), "last": cur[code]["y10"],
+                     "prev": prev[-1][1] if prev else None, "chg_1d_bp": (cur[code]["y10"] - prev[-1][1]) * 100 if prev else None})
     by = {r["id"]: r for r in rows}
-    spreads = []
-    def add(label, a, bb, note):
-        if a in by and bb in by:
-            spreads.append({"label": label, "bp": (by[a]["last"] - by[bb]["last"]) * 100, "note": note})
-    add("US 10Y minus 2Y (curve)", "US 10Y", "US 2Y", "Negative means inverted: markets pricing cuts or a downturn")
-    add("US 30Y minus 10Y", "US 30Y", "US 10Y", "Long-end term premium")
-    add("UK 10Y minus 5Y", "UK 10Y", "UK 5Y", "Gilt curve slope")
-    add("France minus Germany 10Y", "FR 10Y", "DE 10Y", "Political and fiscal stress gauge for France")
-    add("Italy minus Germany 10Y", "IT 10Y", "DE 10Y", "Periphery stress gauge")
-    add("Spain minus Germany 10Y", "ES 10Y", "DE 10Y", "Periphery stress gauge")
-    add("Netherlands minus Germany 10Y", "NL 10Y", "DE 10Y", "Core spread; usually small")
-    add("UK 10Y minus Germany 10Y", "UK 10Y", "DE 10Y", "Gilts versus Bunds")
-    add("US 10Y minus Germany 10Y", "US 10Y", "DE 10Y", "Transatlantic yield gap; supports the dollar when wide")
-    return {"rows": rows, "spreads": spreads, "inflation": notes}, raw
+    spreads = [x for x in (
+        spread_row(by, "US 10Y minus 2Y (curve)", "US 10Y", "US 2Y", "Negative means inverted: markets pricing cuts or a downturn"),
+        spread_row(by, "France minus Germany 10Y", "FR 10Y", "DE 10Y", "Political and fiscal stress gauge for France"),
+        spread_row(by, "Italy minus Germany 10Y", "IT 10Y", "DE 10Y", "Periphery stress gauge"),
+        spread_row(by, "Spain minus Germany 10Y", "ES 10Y", "DE 10Y", "Periphery stress gauge"),
+        spread_row(by, "Netherlands minus Germany 10Y", "NL 10Y", "DE 10Y", "Core spread; usually small"),
+        spread_row(by, "UK 10Y minus Germany 10Y", "UK 10Y", "DE 10Y", "Gilts versus Bunds"),
+        spread_row(by, "US 10Y minus Germany 10Y", "US 10Y", "DE 10Y", "Transatlantic yield gap; supports the dollar when wide"),
+    ) if x]
+    return {"rows": rows, "spreads": spreads, "inflation": inflation}, raw

@@ -343,7 +343,7 @@ function universeBlock(u) {
     <tr><td>Least correlated pairs</td><td class="n">${u.lowest_corr.map(x => `${esc(x.a)}↔${esc(x.b)} ${f(x.corr, 2)}`).join("<br>") || "n/a"}</td><td></td></tr>
     <tr><td>Macro override risk</td><td class="n">${dot[rk.level]} ${rk.level === "red" ? "High" : rk.level === "amber" ? "Medium" : "Low"}</td><td class="small mut">${esc(rk.detail)}</td></tr></table></div></div>`;
 }
-const bp = x => num(x) ? (x >= 0 ? "+" : "") + f(x, 0) + " bp" : "n/a";
+const bp = x => { if (!num(x)) return "n/a"; const r = Math.round(x); return (r > 0 ? "+" : "") + r + " bp"; };
 const asofTag = a => { if (!a) return ""; const today = new Date().toISOString().slice(0, 10); return a === today ? "live" : "close " + new Date(a + "T00:00:00Z").toLocaleDateString("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}); };
 function tileGroup(m, group, title, opts = {}) {
   const q = m.quotes.filter(x => x.group === group && num(x.price));
@@ -353,21 +353,23 @@ function tileGroup(m, group, title, opts = {}) {
 }
 function ratesCard(r) {
   if (!r || !r.rows.length) return `<div class="note">Bond yield data could not be fetched on the last update.</div>`;
-  const row = x => `<tr><td><b>${esc(x.name)}</b></td><td class="n">${f(x.last, 2)}%</td><td class="n">${bp(x.chg_1d_bp)}</td><td class="n">${bp(x.chg_1m_bp)}</td><td class="n">${bp(x.chg_3m_bp)}</td>
-    <td class="n small">${num(x.lo_1y) ? f(x.lo_1y, 2) + " to " + f(x.hi_1y, 2) : x.history_days != null ? `<span class="mut">history ${x.history_days} d</span>` : "n/a"}</td><td class="small ${x.extreme ? "warn" : "mut"}">${x.extreme ? esc(x.extreme) : ""}</td><td class="small mut">${esc(x.source)}${x.asof ? ", " + esc(x.asof.slice(5)) : ""}</td></tr>`;
-  const sp = r.spreads.map(x => `<tr><td>${esc(x.label)}</td><td class="n"><b>${bp(x.bp)}</b></td><td class="small mut">${esc(x.note)}</td></tr>`).join("");
-  const inf = (r.inflation || []).map(x => `<tr><td>${esc(x.label)}</td><td class="n"><b>${f(x.value, 2)}%</b></td><td class="small mut">${num(x.chg_1m_bp) ? bp(x.chg_1m_bp) + " in 1 month" : ""}</td></tr>`).join("");
-  return `<div class="card tw"><h3>Government bond yields</h3><table><tr><th>Bond</th><th class="n">Yield</th><th class="n">1 day</th><th class="n">1 month</th><th class="n">3 months</th><th class="n">1y range</th><th>Context</th><th>Source</th></tr>${r.rows.map(row).join("")}</table>
-    <div class="grid" style="margin-top:12px"><div><h4>Spreads and curve</h4><table>${sp}${inf}</table></div>
-    <div class="small mut"><h4>How to read this</h4>Rising yields raise the discount rate on future earnings, which tends to weigh on long-duration growth stocks and lift bank margins. A widening France-Germany or Italy-Germany spread signals stress in euro sovereign debt. Country yields for Germany, France, Italy, Spain and the Netherlands have no downloadable history, so their changes appear after the site has recorded a few days. UK gilt data from the Bank of England lags by a couple of days.</div></div></div>`;
+  const row = x => `<tr><td><b>${esc(x.name)}</b></td><td class="n">${f(x.last, 2)}%</td><td class="n"><b>${bp(x.chg_1d_bp)}</b></td><td class="small mut">${esc(x.source)}${x.asof ? ", " + esc(x.asof.slice(5)) : ""}</td></tr>`;
+  const sp = r.spreads.map(x => `<tr><td>${esc(x.label)}</td><td class="n"><b>${bp(x.bp)}</b></td><td class="n">${bp(x.chg_1d_bp)}</td><td class="small mut">${esc(x.note)}</td></tr>`).join("");
+  const inf = (r.inflation || []).map(x => `<tr><td>${esc(x.label)}</td><td class="n"><b>${f(x.value, 2)}%</b></td><td class="n">${bp(x.chg_1d_bp)}</td><td class="small mut">Nominal minus real 10-year yield</td></tr>`).join("");
+  const nob = r.rows.some(x => x.id.length === 6 && x.chg_1d_bp == null && /10Y$/.test(x.id) && x.source.startsWith("world"));
+  return `<div class="grid"><div class="card tw"><h3>Government bond yields</h3><table><tr><th>Bond</th><th class="n">Yield</th><th class="n">vs prior close</th><th>Source</th></tr>${r.rows.map(row).join("")}</table>
+    ${nob ? '<div class="small mut" style="margin-top:6px">Germany, France, Italy, Spain and the Netherlands show a change from tomorrow: their source gives only the current yield, so this site stores each day\'s last reading.</div>' : ""}
+    <div class="small mut">UK gilt data from the Bank of England lags a couple of days.</div></div>
+    <div class="card tw"><h3>Spreads</h3><table><tr><th>Spread</th><th class="n">Level</th><th class="n">vs prior close</th><th>Why it matters</th></tr>${sp}${inf}</table></div></div>`;
 }
 function volCard(v) {
   if (!v || v.vix == null) return "";
-  const kv = [["VIX", v.vix], ["VIX 9-day", v.vix9d], ["VIX 3-month", v.vix3m], ["VVIX", v.vvix], ["SKEW", v.skew], ["MOVE (rates)", v.move], ["VXN (Nasdaq)", v.vxn], ["OVX (oil)", v.ovx]].filter(x => num(x[1]));
-  return `<div class="card"><h3>Volatility</h3><div class="tiles">${kv.map(x => `<div class="tile"><span class="mut small">${x[0]}</span><b>${f(x[1], 1)}</b></div>`).join("")}</div>
-    <div style="margin-top:8px"><b>Regime:</b> ${esc(v.regime || "n/a")} · <b>Term structure:</b> ${esc(v.term || "n/a")}</div>
-    <ul class="small clean">${(v.notes || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-    ${v.expected && v.expected.length ? `<h4>Expected S&amp;P 500 move from options</h4><table><tr><th>Expiry</th><th class="n">Days</th><th class="n">Move</th><th class="n">Points</th></tr>${v.expected.map(e => `<tr><td>${esc(e.exp)}</td><td class="n">${e.dte}</td><td class="n">±${f(e.move_pct, 2)}%</td><td class="n">${num(e.points) ? "±" + f(e.points, 0) : "n/a"}</td></tr>`).join("")}</table><div class="small mut">${esc(v.expected_source)}. About one standard deviation.</div>` : ""}</div>`;
+  return `<div class="card"><h3>Volatility</h3><div class="tiles">
+    <div class="tile"><span class="mut small">VIX</span><b>${f(v.vix, 1)}</b>${pc(v.vix_chg_pct)}</div>
+    <div class="tile"><span class="mut small">SKEW (crash hedging)</span><b>${num(v.skew) ? f(v.skew, 0) : "n/a"}</b><span class="small mut">${num(v.skew) ? (v.skew >= 140 ? "elevated" : "normal") : ""}</span></div>
+    <div class="tile"><span class="mut small">MOVE (bond volatility)</span><b>${num(v.move) ? f(v.move, 0) : "n/a"}</b><span class="small mut">${num(v.move) ? (v.move >= 110 ? "high" : v.move >= 85 ? "moderate" : "low") : ""}</span></div></div>
+    <div class="small" style="margin-top:8px"><b>Regime:</b> ${esc(v.regime || "n/a")} · <b>Term structure:</b> ${esc((v.term || "n/a").split(" (")[0])}</div>
+    ${v.expected && v.expected.length ? `<div class="small" style="margin-top:6px"><b>Expected S&amp;P 500 move from options:</b> ${v.expected.map(e => `${e.dte === 0 ? "today" : e.dte === 1 ? "tomorrow" : "by " + esc(e.exp.slice(5))} ±${f(e.move_pct, 2)}%${num(e.points) ? " (±" + f(e.points, 0) + " pts)" : ""}`).join(", ")} <span class="mut">(about one standard deviation; ${esc(v.expected_source)})</span></div>` : ""}</div>`;
 }
 function sectorCard(m) {
   const q = m.quotes.filter(x => x.group === "sector" && num(x.price)).sort((a, b) => b.chg_pct - a.chg_pct);
@@ -462,7 +464,7 @@ function method() {
   <li><b>Regime model:</b> a three-state Gaussian hidden Markov model fitted by Baum-Welch on standardised daily log returns and 20-day realised volatility. States are labelled bear, sideways and bull by their fitted mean return. The probabilities shown are <i>filtered</i> (use data up to today only), never smoothed with future data. Stickiness is the chance the regime persists a day; expected duration is 1 / (1 - stickiness). Walk-forward: refit every 21 sessions on an expanding window, scaler fitted on training data only.</li>
   <li><b>Money flow:</b> OBV, Chaikin money flow, Money Flow Index, accumulation/distribution, up/down-day volume, accumulation and distribution days, 20/50-day VWAP and a 6-month volume profile come from daily price and volume bars. Off-exchange and short-sale volume are FINRA's daily public files (US-listed only). Short interest and insider trades come from Nasdaq (US, twice a month for short interest), UK short positions from the FCA register. Options come from CBOE delayed chains; for ASML, Lloyds and Alibaba the US-listed ADR options are used as a proxy. Adyen, Sligro, BYD and DiDi have no listed options. Dark pool venue-level data (FINRA ATS) needs credentials and is not included, and the Dutch AFM and HKEX short registers have no usable feed.</li>
   <li><b>Analyst data:</b> consensus rating, mean/median/low/high price targets, monthly rating counts and recent rating and target changes come from the public forecast pages on stockanalysis.com (S&amp;P Global consensus, TipRanks actions). Revisions count upgrades, downgrades, target raises and cuts in the last 30 and 90 days. The mean-target history is recorded by this site once a day, so that change appears after 28 days. Analyst targets lean optimistic and lag price moves; the Street sentiment tag combines the buy share, revisions and upside, and is not part of the confluence score.</li>
-  <li><b>Rates:</b> US yields and the real yield are the US Treasury's official daily curves, UK gilts are Bank of England par yields (a couple of days behind), and the euro-area AAA curve is the ECB's. Germany, France, Italy, Spain and the Netherlands 10-year yields are current values only; their changes build up from this site's own daily records. "Highest or lowest close since" compares with the history available (two years for US yields, one year for other markets).</li>
+  <li><b>Rates:</b> yields, the spread table and the change versus yesterday's close. US yields and the real yield are the US Treasury's official daily curves, UK gilts are Bank of England par yields (a couple of days behind), and the euro-area AAA curve is the ECB's. Germany, France, Italy, Spain and the Netherlands 10-year yields are current values; their change versus yesterday comes from this site's own daily record. Spread changes are the change in one leg minus the other.</li>
   <li><b>What moves your stocks:</b> correlations of each stock's daily returns with oil, yields, the dollar, VIX and gold over 60 shared trading days. These describe recent behaviour only: they are noisy, change over time and do not prove causation.</li>
   <li><b>IV rank</b> needs a history of the stock's own implied volatility, which this site records once per day from now on; it appears after 20 daily readings.</li>
   <li><b>Price levels and ranges:</b> mechanical, based on 14-day average true range, pivot points and options-implied volatility. They describe volatility, not an edge.</li>

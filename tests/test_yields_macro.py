@@ -27,9 +27,22 @@ class Parsers(unittest.TestCase):
 class Stats(unittest.TestCase):
     def series(self, vals, start=D(2026, 1, 1)): return [(start + dt.timedelta(days=i), v) for i, v in enumerate(vals)]
 
-    def test_changes_in_basis_points(self):
-        s = self.series([4.0 + 0.01 * i for i in range(100)]); r = yields.stats(s, "X", "X", "t")
-        self.assertAlmostEqual(r["chg_1d_bp"], 1.0); self.assertAlmostEqual(r["chg_1m_bp"], 21.0)
+    def test_level_gives_change_vs_yesterday_in_basis_points(self):
+        r = yields.level(self.series([5.00, 5.10, 5.31]), "US 10Y", "US 10Y", "t")
+        self.assertEqual((r["last"], r["prev"]), (5.31, 5.10)); self.assertAlmostEqual(r["chg_1d_bp"], 21.0); self.assertEqual(r["asof"], "2026-01-03")
+
+    def test_level_needs_two_observations(self):
+        self.assertIsNone(yields.level(self.series([5.0]), "X", "X", "t"))
+
+    def test_spread_row_and_its_change(self):
+        rows = {"FR 10Y": {"last": 4.80, "chg_1d_bp": -4.0}, "DE 10Y": {"last": 3.50, "chg_1d_bp": 1.0}}
+        sp = yields.spread_row(rows, "France minus Germany 10Y", "FR 10Y", "DE 10Y", "n")
+        self.assertAlmostEqual(sp["bp"], 130.0); self.assertAlmostEqual(sp["chg_1d_bp"], -5.0)
+
+    def test_spread_change_unknown_when_a_leg_has_no_previous_close(self):
+        rows = {"IT 10Y": {"last": 4.6, "chg_1d_bp": None}, "DE 10Y": {"last": 3.5, "chg_1d_bp": 1.0}}
+        self.assertIsNone(yields.spread_row(rows, "x", "IT 10Y", "DE 10Y", "n")["chg_1d_bp"])
+        self.assertIsNone(yields.spread_row(rows, "x", "IT 10Y", "XX", "n"))
 
     def test_extreme_highest_since(self):
         s = self.series([5.0] + [4.0] * 200 + [4.5])
@@ -41,17 +54,14 @@ class Stats(unittest.TestCase):
     def test_no_extreme_in_the_middle(self):
         self.assertIsNone(yields.extreme(self.series([4, 5, 3, 4.5, 4.0, 4.2, 4.1] * 20)))
 
-    def test_spread_on_shared_dates(self):
-        a = self.series([5.0] * 30); b = self.series([4.0] * 30)[2:]
-        sp = yields.spread(a, b); self.assertAlmostEqual(sp["bp"], 100.0)
-
-    def test_snapshots_accumulate(self):
+    def test_snapshots_accumulate_and_give_yesterday(self):
         old = lib.CACHE
         with tempfile.TemporaryDirectory() as d:
             lib.CACHE = d
             try:
-                yields.snapshots(D(2026, 10, 1), {"DE": 3.4}); h = yields.snapshots(D(2026, 10, 6), {"DE": 3.5})
-                self.assertEqual(h["DE"], [(D(2026, 10, 1), 3.4), (D(2026, 10, 6), 3.5)])
+                yields.snapshots(D(2026, 10, 5), {"DE": 3.4}); h = yields.snapshots(D(2026, 10, 6), {"DE": 3.5})
+                self.assertEqual(h["DE"], [(D(2026, 10, 5), 3.4), (D(2026, 10, 6), 3.5)])
+                yields.snapshots(D(2026, 10, 6), {"DE": 3.52}); self.assertEqual(yields.snapshots(D(2026, 10, 6), {"DE": 3.53})["DE"][-1][1], 3.53)  # last build of the day wins
             finally: lib.CACHE = old
 
 def prices(n, seed, base=100.0, beta=None, driver=None):

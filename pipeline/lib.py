@@ -346,16 +346,16 @@ MARKET = [
     ("equity", "^AEX", "AEX"), ("equity", "^STOXX50E", "Euro Stoxx 50"), ("equity", "^STOXX", "STOXX 600"), ("equity", "^GDAXI", "DAX"), ("equity", "^FCHI", "CAC 40"),
     ("equity", "^FTSE", "FTSE 100"), ("equity", "^IBEX", "IBEX 35"),
     ("equity", "^N225", "Nikkei 225"), ("equity", "000001.SS", "Shanghai Composite"), ("equity", "^HSI", "Hang Seng"), ("equity", "^KS11", "Kospi"), ("equity", "^AXJO", "ASX 200"),
-    ("vol", "^VIX", "VIX"), ("vol", "^VIX9D", "VIX 9-day"), ("vol", "^VIX3M", "VIX 3-month"), ("vol", "^VVIX", "VVIX"), ("vol", "^SKEW", "SKEW"),
-    ("vol", "^MOVE", "MOVE (rates volatility)"), ("vol", "^VXN", "VXN (Nasdaq volatility)"), ("vol", "^OVX", "OVX (oil volatility)"),
+    ("vol", "^VIX", "VIX"), ("vol", "^VIX9D", "VIX 9-day"), ("vol", "^VIX3M", "VIX 3-month"), ("vol", "^SKEW", "SKEW"),
+    ("vol", "^MOVE", "MOVE (rates volatility)"),
     ("rates", "^TNX", "US 10Y yield (Yahoo)"),
-    ("fx", "DX-Y.NYB", "US dollar index"), ("fx", "EURUSD=X", "EUR/USD"), ("fx", "USDJPY=X", "USD/JPY"), ("fx", "GBPUSD=X", "GBP/USD"), ("fx", "EURGBP=X", "EUR/GBP"), ("fx", "EURCHF=X", "EUR/CHF"),
-    ("commodity", "CL=F", "Oil (WTI)"), ("commodity", "BZ=F", "Oil (Brent)"), ("commodity", "NG=F", "Natural gas"), ("commodity", "GC=F", "Gold"), ("commodity", "SI=F", "Silver"),
-    ("commodity", "HG=F", "Copper"), ("commodity", "SB=F", "Sugar"), ("commodity", "CC=F", "Cocoa"),
-    ("crypto", "BTC-EUR", "Bitcoin (EUR)"), ("crypto", "ETH-EUR", "Ethereum (EUR)"), ("crypto", "BTC-USD", "Bitcoin (USD)"), ("crypto", "ETH-USD", "Ethereum (USD)"),
-    ("crypto", "SOL-USD", "Solana (USD)"), ("crypto", "XRP-USD", "XRP (USD)"), ("crypto", "IBIT", "iShares Bitcoin Trust"), ("crypto", "COIN", "Coinbase"), ("crypto", "MSTR", "Strategy"),
+    ("fx", "DX-Y.NYB", "US dollar index"), ("fx", "EURUSD=X", "EUR/USD"), ("fx", "USDJPY=X", "USD/JPY"), ("fx", "EURGBP=X", "EUR/GBP"),
+    ("commodity", "CL=F", "Oil (WTI)"), ("commodity", "BZ=F", "Oil (Brent)"), ("commodity", "GC=F", "Gold"),
+    ("commodity", "HG=F", "Copper"),
+    ("crypto", "BTC-EUR", "Bitcoin (EUR)"), ("crypto", "ETH-EUR", "Ethereum (EUR)"),
     ("sector", "XLK", "Technology"), ("sector", "XLF", "Financials"), ("sector", "XLE", "Energy"), ("sector", "XLV", "Health care"), ("sector", "XLY", "Consumer discretionary"),
     ("sector", "XLP", "Consumer staples"), ("sector", "XLI", "Industrials"), ("sector", "XLU", "Utilities"), ("sector", "XLB", "Materials"), ("sector", "XLRE", "Real estate"),
     ("sector", "XLC", "Communication services"),
 ]
+
 INDICES = [(s, n) for _, s, n in MARKET]
