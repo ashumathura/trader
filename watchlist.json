@@ -196,6 +196,42 @@
       "index": "^HSI",
       "fx": "USDEUR=X",
       "sa": "quote/otc/DIDIY"
+    },
+    {
+      "ticker": "AMS:MICC",
+      "yahoo": "MICC.AS",
+      "av": "MICC.AMS",
+      "name": "The Magnum Ice Cream Company",
+      "sector": "Ice cream and frozen foods",
+      "currency": "EUR",
+      "exchange": "Euronext Amsterdam",
+      "news": "Magnum Ice Cream Company",
+      "etf": "XLP",
+      "peers": [
+        "UL",
+        "NSRGY",
+        "DANOY"
+      ],
+      "index": "^AEX",
+      "sa": "quote/ams/MICC"
+    },
+    {
+      "ticker": "AMS:BFIT",
+      "yahoo": "BFIT.AS",
+      "av": "BFIT.AMS",
+      "name": "Basic-Fit",
+      "sector": "Fitness clubs",
+      "currency": "EUR",
+      "exchange": "Euronext Amsterdam",
+      "news": "Basic-Fit",
+      "etf": "XLY",
+      "peers": [
+        "PLNT",
+        "XPOF",
+        "LTH"
+      ],
+      "index": "^AEX",
+      "sa": "quote/ams/BFIT"
     }
   ],
   "earnings_overrides": {
