@@ -1,20 +1,173 @@
 {
-  "_note": "Public file. Tickers only: no funds, quantities, prices paid or values. Add extra well-known tickers here if you want your real holdings to be less obvious; the local dashboard only shows the ones you hold.",
+  "_note": "Public file. Tickers only: no funds, quantities, prices paid or values.",
   "tickers": [
-    {"ticker": "AMS:ADYEN", "yahoo": "ADYEN.AS"},
-    {"ticker": "AMS:SLIGR", "yahoo": "SLIGR.AS"},
-    {"ticker": "OTCMKTS:DIDIY", "yahoo": "DIDIY"},
-    {"ticker": "AMS:ASML", "yahoo": "ASML.AS"},
-    {"ticker": "LON:LLOY", "yahoo": "LLOY.L"},
-    {"ticker": "NASDAQ:SONO", "yahoo": "SONO"},
-    {"ticker": "NASDAQ:GRAB", "yahoo": "GRAB"},
-    {"ticker": "HKG:9988", "yahoo": "9988.HK"},
-    {"ticker": "HKG:1211", "yahoo": "1211.HK"},
-    {"ticker": "NASDAQ:NFLX", "yahoo": "NFLX"}
+    {
+      "ticker": "AMS:ASML",
+      "yahoo": "ASML.AS",
+      "av": "ASML.AMS",
+      "name": "ASML Holding",
+      "sector": "Semiconductor equipment",
+      "currency": "EUR",
+      "exchange": "Euronext Amsterdam",
+      "news": "ASML"
+    },
+    {
+      "ticker": "AMS:ADYEN",
+      "yahoo": "ADYEN.AS",
+      "av": "ADYEN.AMS",
+      "name": "Adyen",
+      "sector": "Payments",
+      "currency": "EUR",
+      "exchange": "Euronext Amsterdam",
+      "news": "Adyen"
+    },
+    {
+      "ticker": "AMS:SLIGR",
+      "yahoo": "SLIGR.AS",
+      "av": "SLIGR.AMS",
+      "name": "Sligro Food Group",
+      "sector": "Food distribution",
+      "currency": "EUR",
+      "exchange": "Euronext Amsterdam",
+      "news": "Sligro Food Group"
+    },
+    {
+      "ticker": "LON:LLOY",
+      "yahoo": "LLOY.L",
+      "av": "LLOY.LON",
+      "name": "Lloyds Banking Group",
+      "sector": "Banking",
+      "currency": "GBp",
+      "exchange": "London Stock Exchange",
+      "news": "Lloyds Banking Group"
+    },
+    {
+      "ticker": "HKG:9988",
+      "yahoo": "9988.HK",
+      "av": null,
+      "name": "Alibaba Group",
+      "sector": "E-commerce and cloud",
+      "currency": "HKD",
+      "exchange": "Hong Kong",
+      "news": "Alibaba"
+    },
+    {
+      "ticker": "HKG:1211",
+      "yahoo": "1211.HK",
+      "av": null,
+      "name": "BYD",
+      "sector": "Electric vehicles",
+      "currency": "HKD",
+      "exchange": "Hong Kong",
+      "news": "BYD"
+    },
+    {
+      "ticker": "NASDAQ:NFLX",
+      "yahoo": "NFLX",
+      "av": "NFLX",
+      "name": "Netflix",
+      "sector": "Streaming",
+      "currency": "USD",
+      "exchange": "NASDAQ",
+      "news": "Netflix"
+    },
+    {
+      "ticker": "NASDAQ:GRAB",
+      "yahoo": "GRAB",
+      "av": "GRAB",
+      "name": "Grab Holdings",
+      "sector": "Southeast Asia super-app",
+      "currency": "USD",
+      "exchange": "NASDAQ",
+      "news": "Grab Holdings"
+    },
+    {
+      "ticker": "NASDAQ:SONO",
+      "yahoo": "SONO",
+      "av": "SONO",
+      "name": "Sonos",
+      "sector": "Consumer audio",
+      "currency": "USD",
+      "exchange": "NASDAQ",
+      "news": "Sonos"
+    },
+    {
+      "ticker": "OTCMKTS:DIDIY",
+      "yahoo": "DIDIY",
+      "av": "DIDIY",
+      "name": "DiDi Global",
+      "sector": "Ride-hailing",
+      "currency": "USD",
+      "exchange": "OTC Markets",
+      "news": "DiDi Global"
+    }
   ],
-  "earnings_overrides": {},
+  "earnings_overrides": {
+    "AMS:ASML": {
+      "date": "2026-10-14"
+    },
+    "AMS:SLIGR": {
+      "date": "2026-10-14",
+      "approx": true,
+      "note": "window Oct 14-15"
+    },
+    "NASDAQ:NFLX": {
+      "date": "2026-10-20"
+    },
+    "AMS:ADYEN": {
+      "date": "2026-10-28"
+    },
+    "LON:LLOY": {
+      "date": "2026-10-28",
+      "approx": true,
+      "note": "window Oct 28-29"
+    },
+    "HKG:1211": {
+      "date": "2026-11-03",
+      "approx": true,
+      "note": "window Nov 3-4"
+    },
+    "NASDAQ:GRAB": {
+      "date": "2026-11-03",
+      "approx": true,
+      "note": "window Nov 3-4"
+    },
+    "OTCMKTS:DIDIY": {
+      "date": "2026-11-16",
+      "approx": true,
+      "note": "mid-November"
+    },
+    "NASDAQ:SONO": {
+      "date": "2026-11-17",
+      "approx": true,
+      "note": "window Nov 17-18"
+    },
+    "HKG:9988": {
+      "date": "2026-11-24",
+      "approx": true,
+      "note": "late November, est. Nov 24-30"
+    }
+  },
   "macro_events": [
-    {"date": "2026-10-28", "title": "FOMC decision"},
-    {"date": "2026-12-09", "title": "FOMC decision"}
+    {
+      "date": "2026-10-28",
+      "title": "FOMC decision",
+      "detail": "US Federal Reserve rate decision"
+    },
+    {
+      "date": "2026-10-29",
+      "title": "ECB rate decision",
+      "detail": "European Central Bank monetary policy meeting"
+    },
+    {
+      "date": "2026-12-09",
+      "title": "FOMC decision",
+      "detail": "US Federal Reserve rate decision"
+    },
+    {
+      "date": "2026-12-17",
+      "title": "ECB rate decision",
+      "detail": "European Central Bank monetary policy meeting"
+    }
   ]
 }

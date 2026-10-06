@@ -1,29 +1,44 @@
-# trader: public market data layer
+# trader: market intelligence site
 
-A GitHub Action refreshes market data every 30 minutes on weekdays and publishes it with GitHub Pages as plain JSON files:
-`technicals.json`, `news.json`, `market.json`, `calendar.json`, `prices.json`, `meta.json`.
+A GitHub Action rebuilds a public web page every 30 minutes on weekdays and publishes it with GitHub Pages:
 
-**This repo contains no personal data.** No funds, quantities, purchase prices, values, or links to private sheets.
-The only portfolio-related file is `watchlist.json` (tickers). The personal dashboard runs on your own computer, reads your holdings from your sheet, and combines them with these public files in your browser.
+**https://ashumathura.github.io/trader/**
+
+It covers a fixed list of ten stocks (see `watchlist.json`) with technical analysis, a hidden-Markov regime model, price levels, news, market trends and an event calendar. **It contains no personal data**: no holdings, quantities, purchase prices or links to private sheets.
+
+## What the page shows
+- **Top ideas and heat map**: stocks ranked by a 0 to 10 confluence score (ten yes/no bullish checks).
+- **Per stock**: price chart with 50 and 200-day averages, RSI, ADX, MACD, Aroon, Hull MA, OBV, CMF, Bollinger, pivots, weekly overlay, mechanical entry/target/stop levels.
+- **Regime model**: 3-state Gaussian HMM (bear, sideways, bull) with filtered probabilities, stickiness, expected duration, transition matrix, regime moments and an out-of-sample walk-forward check (see `quant-signals-guide.md` ideas in `pipeline/analysis.py`).
+- **Market trends**: index, volatility, yield, FX and commodity quotes with trends, breadth across the ten stocks, headline themes, Fed and ECB releases.
+- **Calendar**: earnings (pinned dates in `watchlist.json`, overridden by Alpha Vantage when it lists the ticker), Fed and ECB decisions, estimated ex-dividend dates.
+
+Not financial advice. Everything is rule-based and descriptive.
 
 ## One-time setup
-1. Push this repo to https://github.com/ashumathura/trader (`./push.sh` does it). The workflow already lives in `.github/workflows/update-data.yml`; pushing workflow files needs a token with the `workflow` scope.
-2. Repo Settings > Pages > Source: **GitHub Actions**.
-3. Optional: Settings > Secrets and variables > Actions > New secret `AV_KEY` (your Alpha Vantage key) for earnings dates. Never commit the key.
-4. Actions tab > "Update market data" > Run workflow. After about a minute, https://ashumathura.github.io/trader/data/meta.json should open.
+1. Settings > Pages > Source: **GitHub Actions**.
+2. Settings > Secrets and variables > Actions > secret `AV_KEY` (Alpha Vantage key). Optional but recommended: used for earnings dates and as a price fallback. Never commit the key.
+3. Actions tab > "Update market data" > Run workflow. After a couple of minutes the site is live.
 
-## Local dashboard (private)
-Run `python3 dashboard/serve.py`. It builds the public data on your computer (Yahoo rate-limits GitHub's servers, so the Action often gets HTTP 429 and publishes no prices), refreshes it every 20 minutes and opens the dashboard at http://localhost:8765. Only `dashboard/index.html` and `docs/` are served, on this computer only.
-`dashboard/index.html` is **not** published (Pages only serves `docs/`). It also works opened straight from disk, but then it can only use the GitHub Pages data. It fetches the public JSON from Pages and your holdings from a published-CSV link of your sheet (or a CSV file you pick). The link is kept only in that browser's localStorage. Columns: `ticker` (same names as `watchlist.json`), `quantity`, optional `cost` and `currency`; a row with ticker `CASH` is a cash position. Tickers missing from `watchlist.json` get no market data, so add them there.
-Do not save exports of your sheet inside this repo; `dashboard/local/` and `*.private.*` are git-ignored as a safety net.
-
-## Development
-`python3 -m unittest discover -s tests` runs the tests (also run in CI before each build). Technical signals use the last *completed* daily bar: while a market is open, the forming bar is dropped.
+## Where the data comes from
+| Data | Source | Notes |
+|---|---|---|
+| Prices (2 years daily) | Yahoo Finance | GitHub's servers are often rate limited (HTTP 429), so the pipeline falls back to Yahoo through the Jina Reader proxy (`r.jina.ai`, public price data only), then to Alpha Vantage (last 100 sessions, 25 calls a day, no regime model with so little history) |
+| Stock news | Google News RSS | one query per stock |
+| Market news | CNBC, MarketWatch, Investing.com RSS | |
+| Central banks | Federal Reserve and ECB RSS | |
+| Earnings dates | `watchlist.json`, Alpha Vantage | |
 
 ## Edit the watchlist
-Add or remove tickers in `watchlist.json` (`ticker` = the Google Finance style name from your sheet, `yahoo` = Yahoo symbol). Commit and the next run picks it up. `earnings_overrides` lets you pin an earnings date, `macro_events` adds Fed, CPI and similar dates.
+`watchlist.json` holds the tickers and their public details (`yahoo` symbol, `av` Alpha Vantage symbol or `null`, name, sector, currency, news query), `earnings_overrides` and `macro_events`. Commit and the next run picks it up. Add or change macro dates when central banks publish new calendars.
 
-## Privacy notes
-- The ticker list is public if the repo is public. If you want to hide which stocks you own, add extra well-known tickers; the local dashboard only shows those you actually hold.
-- The Google Sheet link/ID must never be added here. Your sheet is link-viewable, so anyone with its ID can read it.
-- Run `python3 pipeline/build_data.py` locally to test (needs internet, Python 3.8+).
+## Develop
+```
+python3 -m unittest discover -s tests     # unit tests (also run in CI)
+python3 pipeline/build_data.py            # builds docs/ locally (needs internet)
+python3 dashboard/serve.py                # builds and serves locally at http://localhost:8765
+```
+Source for the page is `site/index.html`; the build copies it to `docs/`. Technical signals use the last *completed* daily bar: while a market is open the forming bar is dropped.
+
+## Private holdings dashboard (optional, local only)
+`dashboard/index.html` combines these public files with your own holdings CSV or published Google Sheet. It is **not** published (Pages serves only `docs/`) and keeps your sheet link in your browser only. Run `python3 dashboard/serve.py`, then pick your CSV in the page. Columns: `ticker`, `quantity`, optional `cost` and `currency`; a `CASH` row is a cash position. `dashboard/local/` and `*.private.*` are git-ignored; never commit exports of your sheet.

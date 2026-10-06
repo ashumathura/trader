@@ -14,16 +14,33 @@ STATUS = {}
 def _path(url):
     return os.path.join(CACHE, hashlib.sha1(url.encode()).hexdigest() + ".txt")
 
-def cached_get(url, ttl, source=None, timeout=15):
+_throttle_lock = threading.Lock()
+_last_call = {}
+MIN_GAP = {"r.jina.ai": 3.3}  # free tier allows about 20 requests per minute
+
+def _throttle(url):
+    host = urllib.parse.urlparse(url).netloc
+    gap = MIN_GAP.get(host)
+    if not gap: return
+    with _throttle_lock:
+        wait = _last_call.get(host, 0) + gap - time.time()
+        if wait > 0: time.sleep(wait)
+        _last_call[host] = time.time()
+
+def cached_get(url, ttl, source=None, timeout=20, validate=None, headers=None):
+    """GET with an on-disk cache. A response that fails `validate` is never cached (so a rate-limit message
+    cannot replace good data) and is treated as a failure."""
     p = _path(url)
     fresh = getattr(FRESH, "on", False)
     if os.path.exists(p) and not fresh and time.time() - os.path.getmtime(p) < ttl:
         if source: STATUS.setdefault(source, "cached")
         return open(p, encoding="utf-8").read()
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        _throttle(url)
+        h = {"User-Agent": UA, "Accept": "*/*"}; h.update(headers or {})
+        with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=timeout) as r:
             txt = r.read().decode("utf-8", "replace")
+        if validate and not validate(txt): raise ValueError("response failed validation: " + txt[:80].replace("\n", " "))
         open(p, "w", encoding="utf-8").write(txt)
         if source: STATUS[source] = "live"
         return txt
@@ -38,30 +55,71 @@ def cached_get(url, ttl, source=None, timeout=15):
 _mem = {}
 
 # ----------------------------------------------------------------------------- yahoo prices
-def yahoo_chart(sym, rng="2y", interval="1d", ttl=3600, drop_partial=True):
-    txt = None
-    for host in ("query1", "query2"):  # Yahoo throttles some hosts/IP ranges independently
-        url = "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s&events=div" % (
-            host, urllib.parse.quote(sym), rng, interval)
-        txt = cached_get(url, ttl, "yahoo")
-        if txt: break
+YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s&events=div"
+DIRECT_DEAD = threading.Event()  # set once Yahoo rate limits this machine, so later calls skip straight to the proxy
+
+def _json_after(txt, marker="{"):
+    """Pull the first JSON object out of text that may have a wrapper (the Jina Reader adds a header)."""
+    i = txt.find(marker)
+    if i < 0: return None
+    try: return json.JSONDecoder().raw_decode(txt[i:])[0]
+    except Exception: return None
+
+def _valid_chart(txt):
+    j = _json_after(txt)
+    return bool(j and j.get("chart", {}).get("result"))
+
+def _parse_chart(j):
+    res = j["chart"]["result"][0]
+    q = res["indicators"]["quote"][0]
+    ts = res["timestamp"]
+    bars = {"t": [], "o": [], "h": [], "l": [], "c": [], "v": []}
+    for i, t in enumerate(ts):
+        if q["close"][i] is None: continue
+        bars["t"].append(t)
+        for k, kk in (("o", "open"), ("h", "high"), ("l", "low"), ("c", "close"), ("v", "volume")):
+            bars[k].append(q[kk][i] if q[kk][i] is not None else q["close"][i])
+    divs = sorted((d["date"], d["amount"]) for d in (res.get("events", {}).get("dividends", {}) or {}).values())
+    return bars, divs, res.get("meta", {})
+
+def yahoo_chart(sym, rng="2y", interval="1d", ttl=1500, drop_partial=True):
+    """Daily bars from Yahoo. Direct first; if Yahoo throttles this machine, go through the Jina Reader proxy
+    (public price data only). Returns None when both fail."""
+    url = YAHOO % (urllib.parse.quote(sym), rng, interval)
+    txt, via = None, None
+    if not DIRECT_DEAD.is_set():
+        txt, via = cached_get(url, ttl, "yahoo", validate=_valid_chart), "direct"
+        if not txt and not os.path.exists(_path(url)): DIRECT_DEAD.set()
+    if not txt:
+        txt, via = cached_get("https://r.jina.ai/" + url, ttl, "yahoo_proxy", validate=_valid_chart, timeout=40,
+                              headers={"x-no-cache": "true", "Accept": "text/plain"}), "proxy"
     if not txt: return None
     try:
-        res = json.loads(txt)["chart"]["result"][0]
-        q = res["indicators"]["quote"][0]
-        ts = res["timestamp"]
-        bars = {"t": [], "o": [], "h": [], "l": [], "c": [], "v": []}
-        for i, t in enumerate(ts):
-            if q["close"][i] is None: continue
-            bars["t"].append(t)
-            for k, kk in (("o", "open"), ("h", "high"), ("l", "low"), ("c", "close"), ("v", "volume")):
-                bars[k].append(q[kk][i] if q[kk][i] is not None else q["close"][i])
-        divs = sorted((d["date"], d["amount"]) for d in (res.get("events", {}).get("dividends", {}) or {}).values())
-        meta = res.get("meta", {})
+        bars, divs, meta = _parse_chart(_json_after(txt))
         if drop_partial and market_open(meta, time.time()) and len(bars["t"]) > 1:
             for k in bars: bars[k].pop()
-        return {"bars": bars, "divs": divs, "meta": meta}
-    except Exception:
+        return {"bars": bars, "divs": divs, "meta": meta, "source": "yahoo", "via": via}
+    except Exception as e:
+        print("parse failed", sym, e, file=sys.stderr)
+        return None
+
+def av_chart(sym, key, ttl=20 * 3600):
+    """Alpha Vantage daily bars (free tier: last 100 sessions, 25 calls a day). Used only when Yahoo fails."""
+    if not key or not sym: return None
+    url = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&outputsize=compact&symbol=%s&apikey=%s" % (urllib.parse.quote(sym), key)
+    txt = cached_get(url, ttl, "alphavantage", validate=lambda t: "Time Series (Daily)" in t)
+    if not txt: return None
+    try:
+        ts = json.loads(txt)["Time Series (Daily)"]
+        bars = {"t": [], "o": [], "h": [], "l": [], "c": [], "v": []}
+        for d in sorted(ts):
+            r = ts[d]
+            bars["t"].append(int(dt.datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=dt.timezone.utc).timestamp()))
+            for k, kk in (("o", "1. open"), ("h", "2. high"), ("l", "3. low"), ("c", "4. close"), ("v", "5. volume")):
+                bars[k].append(float(r[kk]))
+        return {"bars": bars, "divs": [], "meta": {}, "source": "alphavantage", "via": "direct"}
+    except Exception as e:
+        print("AV parse failed", sym, e, file=sys.stderr)
         return None
 
 def market_open(meta, now):
@@ -238,30 +296,28 @@ def themes_of(titles):
 def parse_rss(txt, limit=25):
     items = []
     try:
-        root = ET.fromstring(txt)
+        root = ET.fromstring(txt.lstrip("\ufeff \r\n\t"))
         for it in root.iter("item"):
             title = (it.findtext("title") or "").strip()
             if not title: continue
             pd = it.findtext("pubDate") or ""
             try: ts = dt.datetime.strptime(pd[:25], "%a, %d %b %Y %H:%M:%S").isoformat()
             except Exception: ts = ""
-            src = it.findtext("source") or ""
+            src = (it.findtext("source") or "").strip()
+            if src and title.endswith(" - " + src): title = title[:-len(" - " + src)]  # Google News appends the outlet
             items.append({"title": title, "link": (it.findtext("link") or "").strip(), "time": ts, "source": src, "tone": tone(title)})
             if len(items) >= limit: break
     except Exception: pass
     return items
-
-def stock_news(sym):
-    url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%s&region=US&lang=en-US" % urllib.parse.quote(sym)
-    txt = cached_get(url, 900, "news")
-    return parse_rss(txt, 15) if txt else []
-
 
 MARKET_FEEDS = [
     ("CNBC", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
     ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
     ("Investing.com", "https://www.investing.com/rss/news_25.rss"),
 ]
-INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^HSI", "Hang Seng"),
-           ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold"), ("BTC-USD", "Bitcoin")]
-
+CENTRAL_BANK_FEEDS = [
+    ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
+    ("ECB", "https://www.ecb.europa.eu/rss/press.html"),
+]
+INDICES = [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^AEX", "AEX"), ("^STOXX50E", "Euro Stoxx 50"), ("^FTSE", "FTSE 100"),
+           ("^HSI", "Hang Seng"), ("^VIX", "VIX"), ("^TNX", "US 10Y yield"), ("EURUSD=X", "EUR/USD"), ("CL=F", "Oil (WTI)"), ("GC=F", "Gold")]
